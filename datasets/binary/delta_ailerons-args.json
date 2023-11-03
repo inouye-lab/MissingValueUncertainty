@@ -1,0 +1,1 @@
+{"name": "delta_ailerons", "path": "./datasets/csv/delta_ailerons.csv", "output": "./datasets/binary/", "target": "Sa", "numeric": ["RollRate", "PitchRate", "currPitch", "currRoll", "diffRollRate"], "categorical": [], "validate_percent": 0.2, "test_percent": 0.3, "seed": 1337, "verbose": 1}
