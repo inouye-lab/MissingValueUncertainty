@@ -3,7 +3,6 @@ import logging
 import pickle
 from typing import List, Optional
 
-import numpy as np
 import pandas as pd
 import torch
 from torch import Tensor, Generator
@@ -13,6 +12,23 @@ INDEX_SAMPLE = 0
 
 INDEX_FEATURE = 1
 """Index of the dimension representing the feature"""
+
+
+def validateFeatures(features: Tensor, expectedFeatures: int, isVector: bool = False):
+    """
+    Validates the matrix is a valid features matrix for the given size
+    :param features:          Matrix to validate dimensions
+    :param expectedFeatures:  Expected number of features
+    :param isVector:          If true, features is a feature vector of size `(features,)`.
+                              If false it's a matrix size `(samples, features)`.
+    """
+    featureSize: int
+    if isVector:
+        featureSize = len(features)
+    else:
+        featureSize = features.shape[INDEX_FEATURE]
+    assert featureSize == expectedFeatures, \
+        f"Expected feature dimension to be {expectedFeatures}, found {featureSize}"
 
 
 class DatasetMeta(object):
@@ -68,12 +84,9 @@ class DatasetMeta(object):
         self._numGroups = None
         self._featureWeights = None
 
-    def isFeaturesValid(self, features: Tensor) -> bool:
-        """
-        If true, the given feature set is compatible with this metadata.
-        """
-        # TODO: consider validating one hot inputs are actually one hot, via groups
-        return features.shape[INDEX_FEATURE] == self.numInputs
+    def validateFeatures(self, features: Tensor, isVector: bool = False) -> None:
+        """Runs assertions to ensure the feature matrix is valid"""
+        validateFeatures(features, self.numInputs, isVector)
 
     @property
     def numInputs(self) -> int:
@@ -119,7 +132,7 @@ class DatasetMeta(object):
         :param rand:       Rand state
         :return: Tensor with the given features dropped
         """
-        assert self.isFeaturesValid(features), "Invalid feature tensor"
+        self.validateFeatures(features)
         assert 0 <= numToDrop <= self.numGroups, "Cannot drop more features than present in the tensor"
         if numToDrop == 0:
             return features
@@ -140,7 +153,10 @@ class DatasetMeta(object):
         :param copy:     If true, copies the tensor before modifying
         :return: Normalized tensor
         """
-        assert self.isFeaturesValid(features), "Invalid feature tensor"
+        vectorInput = len(features.shape) == 1
+        if vectorInput:
+            features = features.reshape(1, -1)
+        self.validateFeatures(features)
         if self.groups is None:
             return features
         if copy:
@@ -155,6 +171,8 @@ class DatasetMeta(object):
                 maxIndexes = torch.argmax(features[:, groupIndexes], dim=INDEX_FEATURE)
                 # overwrite probability with onehot
                 features[:, groupIndexes] = torch.nn.functional.one_hot(maxIndexes, groupSize).type(torch.float)
+        if vectorInput:
+            return features.reshape(-1)
         return features
 
 
@@ -172,8 +190,8 @@ class Dataset(object):
 
     def __init__(self, features: Tensor, targets: Tensor, metadata: DatasetMeta = None):
         # Same number of samples ensures every sample has a target
-        assert metadata is None or metadata.isFeaturesValid(features), \
-            "Inconsistent number of features in metadata and dataset"
+        if metadata is not None:
+            metadata.validateFeatures(features)
         assert features.shape[INDEX_SAMPLE] == targets.shape[INDEX_SAMPLE], "Must have a target for each sample"
         self.features = features
         self.targets = targets
