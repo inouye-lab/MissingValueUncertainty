@@ -132,6 +132,31 @@ class DatasetMeta(object):
             features[:, self._sampleDropIndexes(numToDrop, rand)] = torch.nan
         return features
 
+    def normalizeFeatures(self, features: Tensor, copy: bool = True) -> Tensor:
+        """
+        Ensures all one hot features have a single "hot" value.
+        Important as neural networks trained on boolean values will not automatically support probability inputs.
+        :param features: Features tensor
+        :param copy:     If true, copies the tensor before modifying
+        :return: Normalized tensor
+        """
+        assert self.isFeaturesValid(features), "Invalid feature tensor"
+        if self.groups is None:
+            return features
+        if copy:
+            features = features.clone()
+        for group in range(self.numGroups):
+            # one hot features are any features with at least 2 members in the group
+            # noinspection PyTypeChecker
+            groupIndexes: Tensor = self.groups == group
+            groupSize = torch.count_nonzero(groupIndexes).item()
+            if groupSize > 1:
+                # argmax finds the most significant feature in each sample
+                maxIndexes = torch.argmax(features[:, groupIndexes], dim=INDEX_FEATURE)
+                # overwrite probability with onehot
+                features[:, groupIndexes] = torch.nn.functional.one_hot(maxIndexes, groupSize).type(torch.float)
+        return features
+
 
 class Dataset(object):
     """Object representing a single dataset of features and targets. Provides guarantee the feature count matches"""
@@ -284,13 +309,16 @@ def import_from_csv(name: str, csv: str, targetFeature: str,
         featureSizes = [0]*len(categoricalFeatures)
         for fIndex, featureName in enumerate(categoricalFeatures):
             unique = df[featureName].unique()
-            if len(unique) == 2:
-                featureSizes[fIndex] = 1
-                df[f"{featureName} {unique[0]}"] = (df[featureName] == unique[0]).astype(float)
-            else:
-                featureSizes[fIndex] = len(unique)
-                for value in unique:
-                    df[f"{featureName} {value}"] = (df[featureName] == value).astype(float)
+            #if len(unique) == 2:
+            #    featureSizes[fIndex] = 1
+            #    df[f"{featureName} {unique[0]}"] = (df[featureName] == unique[0]).astype(float)
+            #else:
+            # TODO: consider if its worth merging true and false for a single boolean into one feature
+            # in theory, its easier for the NN to handle separately
+            # however the main reason I did not was it makes it easier to identify boolean features for normalizing
+            featureSizes[fIndex] = len(unique)
+            for value in unique:
+                df[f"{featureName} {value}"] = (df[featureName] == value).astype(float)
 
         df = df.drop(columns=categoricalFeatures)
 
