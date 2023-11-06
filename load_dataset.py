@@ -3,6 +3,8 @@ import json
 import logging
 import os
 
+import torch
+
 from mvu.dataset import import_from_csv, split_dataset
 from mvu.logger import setupLogging, dumpArgs
 import numpy.random as random
@@ -49,7 +51,8 @@ if __name__ == '__main__':
     unsplit = import_from_csv(args.name, path, args.target, args.numeric, args.categorical)
 
     # split into train, validate, test
-    generator = random.default_rng(args.seed)
+    generator = torch.Generator()
+    generator.manual_seed(args.seed)
     split = split_dataset(unsplit, args.validate_percent, args.test_percent, generator)
 
     # write to binary

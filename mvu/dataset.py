@@ -6,8 +6,7 @@ from typing import List, Optional
 import numpy as np
 import pandas as pd
 import torch
-from torch import Tensor
-import numpy.random as random
+from torch import Tensor, Generator
 
 INDEX_SAMPLE = 0
 """Index of the dimension representing samples"""
@@ -129,7 +128,7 @@ class Dataset(object):
             return self.numInputs
         return self.metadata.numGroups
 
-    def split(self, indexes: np.ndarray) -> "Dataset":
+    def split(self, indexes: Tensor) -> "Dataset":
         """Creates a new dataset from the given set of indexes"""
         return Dataset(self.features[indexes, :], self.targets[indexes], self.metadata)
 
@@ -247,7 +246,7 @@ def import_from_csv(name: str, csv: str, targetFeature: str,
     return Dataset(features, targets, datasetMeta)
 
 
-def split_dataset(dataset: Dataset, validPercent: float = 0.2, testPercent: float = 0.3, rand: random.Generator = None
+def split_dataset(dataset: Dataset, validPercent: float = 0.2, testPercent: float = 0.3, rand: Generator = None
                   ) -> DatasetSplits:
     """
     Splits the given dataset based on the given percentages
@@ -266,11 +265,11 @@ def split_dataset(dataset: Dataset, validPercent: float = 0.2, testPercent: floa
 
     # permute rows
     samples = dataset.numSamples
-    indexes: np.ndarray
+    indexes: Tensor
     if rand is not None:
-        indexes = rand.permutation(samples)
+        indexes = torch.randperm(samples, generator=rand)
     else:
-        indexes = np.arange(samples)
+        indexes = torch.arange(samples)
 
     # decide end points for splits
     trainEnd = int(trainPercent * samples)
