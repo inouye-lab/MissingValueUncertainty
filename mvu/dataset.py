@@ -64,6 +64,10 @@ class Dataset(object):
         self.targets = targets
         self.metadata = metadata
 
+    def clone(self) -> "Dataset":
+        """Creates a copy of this dataset to allow modifying the tensors (e.g. for missingness)"""
+        return Dataset(self.features.clone(), self.targets.clone(), self.metadata)
+
     @property
     def numSamples(self):
         return self.features.shape[INDEX_SAMPLE]
@@ -106,6 +110,10 @@ class DatasetSplits(object):
         self.validate = validate
         self.test = test
         self.metadata = train.metadata
+
+    def clone(self) -> "DatasetSplits":
+        """Creates a copy of this dataset to allow modifying the tensors (e.g. for missingness)"""
+        return DatasetSplits(self.train.clone(), self.validate.clone(), self.test.clone())
 
     def save(self, path: str) -> None:
         """
