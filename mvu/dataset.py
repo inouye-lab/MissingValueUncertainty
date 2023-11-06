@@ -36,6 +36,9 @@ class DatasetMeta(object):
     _numGroups: Optional[int]
     """Cached number of features, computed from groups"""
 
+    _featureWeights: Optional[torch.Tensor]
+    """Feature weights for random feature drops"""
+
     def __init__(self, name, target, labels: List[str], groups: Optional[Tensor]):
         assert groups is None or len(groups) == len(labels), "Labels and groups must be the same size"
         self.name = name
@@ -43,6 +46,7 @@ class DatasetMeta(object):
         self.labels = labels
         self.groups = groups
         self._numGroups = None
+        self._featureWeights = None
 
     def __str__(self):
         return (f"DatasetMeta{{name: '{self.name}', target: '{self.target}', labels: {str(self.labels)}, "
@@ -54,6 +58,7 @@ class DatasetMeta(object):
         state = self.__dict__.copy()
         # ditch caches
         del state['_numGroups']
+        del state['_featureWeights']
         return state
 
     def __setstate__(self, state):
@@ -61,6 +66,7 @@ class DatasetMeta(object):
         self.__dict__.update(state)
         # ensure caches are set to none, prevents undefined vs none problems
         self._numGroups = None
+        self._featureWeights = None
 
     def isFeaturesValid(self, features: Tensor) -> bool:
         """
@@ -84,6 +90,48 @@ class DatasetMeta(object):
                 self._numGroups = torch.max(self.groups).item() + 1
         return self._numGroups
 
+    def _sampleDropIndexes(self, numToDrop: int, rand: Generator) -> Tensor:
+        """
+        Samples a boolean Tensor same size as the features of features to drop
+        :param numToDrop:   Number of features to drop
+        :param rand:        Rand state
+        :return:            Index tensor size of `numInputFeatures`
+                            Will be either ints or booleans based on if self.groups is None
+        """
+        if self._featureWeights is None:
+            self._featureWeights = torch.ones(self.numGroups)
+        # select feature indexes to drop
+        dropIndexes = torch.multinomial(self._featureWeights, numToDrop, replacement=False, generator=rand)
+        # if we have groups, need to expand that as some features have multiple indexes
+        # if we don't have groups, indexes are sufficient
+        if self.groups is None:
+            return dropIndexes
+        return torch.isin(self.groups, dropIndexes)
+
+    def dropFeatures(self, features: Tensor, numToDrop: int, bySample: bool = True, copy: bool = True,
+                     rand: Generator = None) -> Tensor:
+        """
+        Drops the given number of features from the input tensor.
+        :param features:   Input tensor
+        :param numToDrop:  Number of features to drop, cannot be greater than `numDistinctFeatures`
+        :param bySample:   If true, samples features to remove per sample. False drops same in all samples.
+        :param copy:       If true, copies the tensor before modifying it
+        :param rand:       Rand state
+        :return: Tensor with the given features dropped
+        """
+        assert self.isFeaturesValid(features), "Invalid feature tensor"
+        assert 0 <= numToDrop <= self.numGroups, "Cannot drop more features than present in the tensor"
+        if numToDrop == 0:
+            return features
+        if copy:
+            features = features.clone()
+        if bySample:
+            for i in range(features.shape[INDEX_SAMPLE]):
+                features[i, self._sampleDropIndexes(numToDrop, rand)] = torch.nan
+        else:
+            features[:, self._sampleDropIndexes(numToDrop, rand)] = torch.nan
+        return features
+
 
 class Dataset(object):
     """Object representing a single dataset of features and targets. Provides guarantee the feature count matches"""
@@ -106,9 +154,12 @@ class Dataset(object):
         self.targets = targets
         self.metadata = metadata
 
-    def clone(self) -> "Dataset":
+    def clone(self, cloneTargets: bool = True) -> "Dataset":
         """Creates a copy of this dataset to allow modifying the tensors (e.g. for missingness)"""
-        return Dataset(self.features.clone(), self.targets.clone(), self.metadata)
+        targets = self.targets
+        if cloneTargets:
+            targets = targets.clone()
+        return Dataset(self.features.clone(), targets, self.metadata)
 
     @property
     def numSamples(self):
@@ -135,6 +186,24 @@ class Dataset(object):
     def isSameSet(self, other: "Dataset"):
         """Checks if the given datasets represent the same dataset"""
         return self.metadata is other.metadata and self.numInputs is other.numInputs
+
+    def dropFeatures(self, numToDrop: int, copy: bool = True, bySample: bool = True,
+                     rand: Generator = None) -> "Dataset":
+        """
+        Drops the given number of features from the input tensor.
+        :param numToDrop:  Number of features to drop, cannot be greater than `numDistinctFeatures`
+        :param copy:       If true, copies the dataset before modifying it. Will not copy if numToDrop is 0
+        :param bySample:   If true, samples features to remove per sample. False drops same in all samples.
+        :param rand:       Rand state
+        :return: Tensor with the given features dropped
+        """
+        if numToDrop == 0:
+            return self
+        dataset = self
+        if copy:
+            dataset = dataset.clone(cloneTargets=False)  # not changing targets
+        dataset.metadata.dropFeatures(dataset.features, numToDrop, bySample, False, rand)
+        return dataset
 
 
 class DatasetSplits(object):
