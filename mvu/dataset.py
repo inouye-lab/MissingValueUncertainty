@@ -28,19 +28,62 @@ class DatasetMeta(object):
     labels: List[str]
     """List of labels for each feature index"""
 
-    groups: Optional[List[int]]
-    """Group indexes for categorical features. 0 represents no group (numeric). If None, no features have groups."""
+    groups: Optional[Tensor]
+    """
+    Group indexes for categorical features. Ranges from 0 to N-1 where N is the number of distinct features.
+    If None, every feature is considered distinct.
+    """
 
-    def __init__(self, name, target, labels: List[str], groups: Optional[List[int]]):
+    _numGroups: Optional[int]
+    """Cached number of features, computed from groups"""
+
+    def __init__(self, name, target, labels: List[str], groups: Optional[Tensor]):
         assert groups is None or len(groups) == len(labels), "Labels and groups must be the same size"
         self.name = name
         self.target = target
         self.labels = labels
         self.groups = groups
+        self._numGroups = None
 
     def __str__(self):
         return (f"DatasetMeta{{name: '{self.name}', target: '{self.target}', labels: {str(self.labels)}, "
                 f"groups: {str(self.groups)}}}")
+
+    # ditch caches when saving state, see https://docs.python.org/3/library/pickle.html#handling-stateful-objects
+    def __getstate__(self):
+        # copy original attributes to avoid breaking object state
+        state = self.__dict__.copy()
+        # ditch caches
+        del state['_numGroups']
+        return state
+
+    def __setstate__(self, state):
+        # restore instance attributes
+        self.__dict__.update(state)
+        # ensure caches are set to none, prevents undefined vs none problems
+        self._numGroups = None
+
+    def isFeaturesValid(self, features: Tensor) -> bool:
+        """
+        If true, the given feature set is compatible with this metadata.
+        """
+        # TODO: consider validating one hot inputs are actually one hot, via groups
+        return features.shape[INDEX_FEATURE] == self.numInputs
+
+    @property
+    def numInputs(self) -> int:
+        """Gets the input dimension of compatible features, determines size of second dimension of features"""
+        return len(self.labels)
+
+    @property
+    def numGroups(self) -> int:
+        """Gets the number of distinct features in the dataset (as some features are onehot), used for missingness"""
+        if self._numGroups is None:
+            if self.groups is None:
+                self._numGroups = self.numInputs
+            else:
+                self._numGroups = torch.max(self.groups).item() + 1
+        return self._numGroups
 
 
 class Dataset(object):
@@ -57,7 +100,7 @@ class Dataset(object):
 
     def __init__(self, features: Tensor, targets: Tensor, metadata: DatasetMeta = None):
         # Same number of samples ensures every sample has a target
-        assert metadata is None or len(metadata.labels) == features.shape[INDEX_FEATURE],\
+        assert metadata is None or metadata.isFeaturesValid(features), \
             "Inconsistent number of features in metadata and dataset"
         assert features.shape[INDEX_SAMPLE] == targets.shape[INDEX_SAMPLE], "Must have a target for each sample"
         self.features = features
@@ -70,12 +113,21 @@ class Dataset(object):
 
     @property
     def numSamples(self):
+        """Gets the number of samples in this datasset, determines size of labels and first dimension of features"""
         return self.features.shape[INDEX_SAMPLE]
 
     @property
-    def numFeatures(self):
+    def numInputs(self):
+        """Gets the input dimension of the features, determines size of second dimension of features"""
         # TODO: generalize to allow features to be multidimensional?
         return self.features.shape[INDEX_FEATURE]
+
+    @property
+    def numGroups(self):
+        """Gets the number of distinct features in the dataset (as some features are onehot), used for missingness"""
+        if self.metadata is None:
+            return self.numInputs
+        return self.metadata.numGroups
 
     def split(self, indexes: np.ndarray) -> "Dataset":
         """Creates a new dataset from the given set of indexes"""
@@ -83,7 +135,7 @@ class Dataset(object):
 
     def isSameSet(self, other: "Dataset"):
         """Checks if the given datasets represent the same dataset"""
-        return self.metadata is other.metadata and self.numFeatures is other.numFeatures
+        return self.metadata is other.metadata and self.numInputs is other.numInputs
 
 
 class DatasetSplits(object):
@@ -175,11 +227,13 @@ def import_from_csv(name: str, csv: str, targetFeature: str,
         df = df.drop(columns=categoricalFeatures)
 
         # store indexes to keep track of groups of features
-        featureGroups = [0]*len(df.columns)
-        groupIndex = len(numericFeatures)
+        featureGroups = torch.arange(0, len(df.columns))
+        # inputIndex is the offset for the first discrete feature
+        # groupIndex is the current index in the features group tensor
+        inputIndex = groupIndex = len(numericFeatures)
         for fIndex, size in enumerate(featureSizes):
             for i in range(size):
-                featureGroups[groupIndex+i] = fIndex+1  # add 1 since 0 means numeric
+                featureGroups[groupIndex+i] = inputIndex+fIndex
             groupIndex += size
 
     logging.info(f'After preprocessing, shape: {df.shape} and columns {df.columns}')
