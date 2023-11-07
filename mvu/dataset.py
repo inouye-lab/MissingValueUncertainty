@@ -153,12 +153,13 @@ class DatasetMeta(object):
         :param copy:     If true, copies the tensor before modifying
         :return: Normalized tensor
         """
+        if self.groups is None:
+            return features
+
         vectorInput = len(features.shape) == 1
         if vectorInput:
             features = features.reshape(1, -1)
         self.validateFeatures(features)
-        if self.groups is None:
-            return features
         if copy:
             features = features.clone()
         for group in range(self.numGroups):
