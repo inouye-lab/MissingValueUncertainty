@@ -4,8 +4,9 @@ from typing import Optional, Union, Tuple
 import torch
 from overrides import override
 from torch import Tensor, Generator
-from torch.distributions.multivariate_normal import MultivariateNormal
+# from torch.distributions.multivariate_normal import MultivariateNormal
 
+from numpy import random
 
 from .dataset import INDEX_SAMPLE, INDEX_FEATURE, DatasetMeta, Dataset, validateFeatures
 from .imputator import containsMissing, Imputator
@@ -87,6 +88,9 @@ class MarginalGaussianDistribution(Imputator, Distribution):
     covariance: Tensor
     """Covariance matrix of size `(features,features)`"""
 
+    _generator: Optional[random.Generator]
+    """Temporary generator used during sample generation as we are unable to use the torch multivariate normal"""
+
     def __init__(self, datasetMeta: DatasetMeta, mean: Tensor, covariance: Tensor):
         datasetMeta.validateFeatures(mean, isVector=True)
         assert covariance.shape[0] == covariance.shape[1] == datasetMeta.numInputs, \
@@ -159,6 +163,13 @@ class MarginalGaussianDistribution(Imputator, Distribution):
         self.datasetMeta.normalizeFeatures(features, copy=False)
 
     @override
+    def augment(self, features: Tensor, distSamples: int, rand: Generator = None) -> Tensor:
+        self._generator = random.default_rng(torch.randint(2**32-1, (1,)).item())
+        result = super().augment(features, distSamples, rand)
+        self._generator = None
+        return result
+
+    @override
     def _sampleDistribution(self, sample: Tensor, distSamples: int, rand: Generator = None) -> Tensor:
         missingMean, missingCov = self.condition(sample, returnCovariance=True)
         # return MultivariateNormal(missingMean, covariance_matrix=missingCov + (torch.eye(len(missingMean)) * 1e-5))
@@ -167,9 +178,7 @@ class MarginalGaussianDistribution(Imputator, Distribution):
         # torch requires positive definite instead of positive-semidefinite, so stuck using numpy here
         # ideally we would always have positive definite,
         # but something about the covariance conditioning does not guarantee that
-        from numpy import random
-        return torch.Tensor(random.default_rng(torch.randint(2**32-1, (1,)).item())
-                                  .multivariate_normal(missingMean, missingCov, distSamples))
+        return torch.Tensor(self._generator.multivariate_normal(missingMean, missingCov, distSamples))
 
     @override
     def _normalize(self, augmentedFeatures: Tensor) -> Tensor:
