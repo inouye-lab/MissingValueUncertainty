@@ -7,6 +7,8 @@ import pandas as pd
 import torch
 from torch import Tensor, Generator
 
+from .serializer import SerializerMixin
+
 INDEX_SAMPLE = 0
 """Index of the dimension representing samples"""
 
@@ -283,7 +285,7 @@ class Dataset(object):
         return dataset
 
 
-class DatasetSplits(object):
+class DatasetSplits(SerializerMixin):
     """Object representing a train, validation, and testing split"""
 
     train: Dataset
@@ -311,26 +313,6 @@ class DatasetSplits(object):
     def clone(self) -> "DatasetSplits":
         """Creates a copy of this dataset to allow modifying the tensors (e.g. for missingness)"""
         return DatasetSplits(self.train.clone(), self.validate.clone(), self.test.clone())
-
-    def save(self, path: str) -> None:
-        """
-        Saves the data to binary
-        :param path: Path excluding extension
-        """
-        with gzip.open(path, 'wb') as f:
-            pickle.dump(self, f)
-
-    @classmethod
-    def load(cls, path: str) -> "DatasetSplits":
-        """
-        Loads the splits from binary
-        :param path: Path excluding extension
-        :return: Loaded dataset
-        """
-        with gzip.open(path, 'rb') as f:
-            data = pickle.load(f)
-        assert isinstance(data, cls)
-        return data
 
 
 def import_from_csv(name: str, csv: str, targetFeature: str,
