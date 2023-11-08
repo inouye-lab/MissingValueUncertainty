@@ -18,6 +18,12 @@ class Distribution(ABC):
     Implementers will also often implement `Imputator` to support distribution based imputation.
     """
 
+    @abstractmethod
+    @property
+    def name(self) -> str:
+        """Gets the name of this distribution for saving in result CSV."""
+        pass
+
     def augment(self, features: Tensor, distSamples: int, rand: Generator = None) -> Tensor:
         """
         Creates an augmented for use in Monte Carlo methods.
@@ -99,6 +105,11 @@ class MarginalGaussianDistribution(Imputator, Distribution):
         self.mean = mean
         self.covariance = covariance
 
+    @override
+    @property
+    def name(self) -> str:
+        return "Marginal Gaussian"
+
     @classmethod
     def fromDataset(cls, dataset: Dataset):
         return cls(
@@ -172,8 +183,7 @@ class MarginalGaussianDistribution(Imputator, Distribution):
     @override
     def _sampleDistribution(self, sample: Tensor, distSamples: int, rand: Generator = None) -> Tensor:
         missingMean, missingCov = self.condition(sample, returnCovariance=True)
-        # return MultivariateNormal(missingMean, covariance_matrix=missingCov + (torch.eye(len(missingMean)) * 1e-5))
-        # .sample(torch.Size((distSamples,)))
+        # return MultivariateNormal(missingMean, covariance_matrix=missingCov).sample(torch.Size((distSamples,)))
 
         # torch requires positive definite instead of positive-semidefinite, so stuck using numpy here
         # ideally we would always have positive definite,
@@ -204,6 +214,11 @@ class ConditionalGaussianDistribution(MarginalGaussianDistribution):
             self.covarianceInv = torch.linalg.pinv(covariance)
         else:
             self.covarianceInv = covarianceInv
+
+    @override
+    @property
+    def name(self) -> str:
+        return "Conditional Gaussian"
 
     @override
     def _condition(self, vector: Tensor, missingMask: Tensor, returnCovariance: bool = True):
