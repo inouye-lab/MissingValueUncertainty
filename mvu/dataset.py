@@ -121,11 +121,11 @@ class DatasetMeta(object):
             return dropIndexes
         return torch.isin(self.groups, dropIndexes)
 
-    def dropFeatures(self, features: Tensor, numToDrop: int, bySample: bool = True, copy: bool = True,
-                     rand: Generator = None) -> Tensor:
+    def dropCount(self, features: Tensor, numToDrop: int, bySample: bool = True, copy: bool = True,
+                  rand: Generator = None) -> Tensor:
         """
         Drops the given number of features from the input tensor.
-        :param features:   Input tensor
+        :param features:   Input tensor of size `(samples, features)`.
         :param numToDrop:  Number of features to drop, cannot be greater than `numDistinctFeatures`
         :param bySample:   If true, samples features to remove per sample. False drops same in all samples.
         :param copy:       If true, copies the tensor before modifying it
@@ -143,6 +143,21 @@ class DatasetMeta(object):
                 features[i, self._sampleDropIndexes(numToDrop, rand)] = torch.nan
         else:
             features[:, self._sampleDropIndexes(numToDrop, rand)] = torch.nan
+        return features
+
+    def dropSpecified(self, features: Tensor, featuresToDrop: Tensor, copy: bool = True):
+        """
+        Drops the specified features from the input tensor.
+        :param features:   Input tensor of size `(samples, features)`.
+        :param featuresToDrop: Index tensor specifying features to drop,
+                               typically will be boolean tensor of size `(features,)`
+        :param copy: If true, copies the dataset before modifying it. Will not copy if numToDrop is 0
+        :return:
+        """
+        self.validateFeatures(features)
+        if copy:
+            features = features.clone()
+        features[:, featuresToDrop] = torch.nan
         return features
 
     def normalizeFeatures(self, features: Tensor, copy: bool = True) -> Tensor:
@@ -231,8 +246,8 @@ class Dataset(object):
         """Checks if the given datasets represent the same dataset"""
         return self.metadata is other.metadata and self.numInputs is other.numInputs
 
-    def dropFeatures(self, numToDrop: int, copy: bool = True, bySample: bool = True,
-                     rand: Generator = None) -> "Dataset":
+    def dropCount(self, numToDrop: int, bySample: bool = True, copy: bool = True,
+                  rand: Generator = None) -> "Dataset":
         """
         Drops the given number of features from the input tensor.
         :param numToDrop:  Number of features to drop, cannot be greater than `numDistinctFeatures`
@@ -241,12 +256,30 @@ class Dataset(object):
         :param rand:       Rand state
         :return: Tensor with the given features dropped
         """
+        assert self.metadata is not None, "Cannot drop features without metadata"
         if numToDrop == 0:
             return self
         dataset = self
         if copy:
             dataset = dataset.clone(cloneTargets=False)  # not changing targets
-        dataset.metadata.dropFeatures(dataset.features, numToDrop, bySample, False, rand)
+        dataset.metadata.dropCount(dataset.features, numToDrop, bySample, False, rand)
+        return dataset
+
+    def dropSpecified(self, featuresToDrop: Tensor, copy: bool = True):
+        """
+        Drops the specified features from the input tensor.
+        :param featuresToDrop: Index tensor specifying features to drop,
+                               typically will be boolean tensor of size `(features,)`
+        :param copy: If true, copies the dataset before modifying it. Will not copy if numToDrop is 0
+        :return:
+        """
+        assert self.metadata is not None, "Cannot drop features without metadata"
+        if torch.count_nonzero(featuresToDrop) == 0:
+            return self
+        dataset = self
+        if copy:
+            dataset = dataset.clone(cloneTargets=False)  # not changing targets
+        dataset.metadata.dropSpecified(dataset.features, featuresToDrop, False)
         return dataset
 
 
