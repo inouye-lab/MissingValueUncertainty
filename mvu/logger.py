@@ -7,12 +7,14 @@ from datetime import datetime
 from typing import Optional
 
 
-def setupLogging(verbosity: int, outputDir: str = None, outputName: str = None) -> None:
+def setupLogging(verbosity: int, outputDir: str = None, outputName: str = None, args: Namespace = None) -> str:
     """
     Sets up standard script logging
     :param verbosity:  1 for info, 2 for debug
     :param outputDir:  Folder to save log files, if none does not save
     :param outputName: Name of the log file, used as a prefix for the date
+    :param args: If defined, dumps the arguments next to the namespace
+    :return:  Date used for output files.
     """
 
     formatter = logging.Formatter(
@@ -25,20 +27,25 @@ def setupLogging(verbosity: int, outputDir: str = None, outputName: str = None) 
     consoleHandler.setFormatter(formatter)
     root.addHandler(consoleHandler)
 
-    # optionally log to file
-    if outputDir is not None:
-        os.makedirs(outputDir, exist_ok=True)
-        date = datetime.now().strftime("%Y%m%d-%H%M%S")
-        if outputName is not None:
-            date = f"{outputName}-{date}"
-        fileHandler = logging.FileHandler(os.path.join(outputDir, f"{date}.log"))
-        fileHandler.setFormatter(formatter)
-        root.addHandler(fileHandler)
-
     if verbosity == 1:
         root.setLevel(logging.INFO)
     elif verbosity == 2:
         root.setLevel(logging.DEBUG)
+
+    # optionally log to file
+    date = datetime.now().strftime("%Y%m%d-%H%M%S")
+    if outputDir is not None:
+        os.makedirs(outputDir, exist_ok=True)
+        name = date
+        if outputName is not None:
+            name = f"{outputName}-{date}"
+        fileHandler = logging.FileHandler(os.path.join(outputDir, f"{name}.log"))
+        fileHandler.setFormatter(formatter)
+        root.addHandler(fileHandler)
+
+        if args is not None:
+            dumpArgs(args, os.path.join(outputDir, f"{name}-args.json"))
+    return date
 
 
 def dumpArgs(args: Namespace, path: str = None) -> None:

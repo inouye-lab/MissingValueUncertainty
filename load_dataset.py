@@ -1,5 +1,4 @@
 import argparse
-import json
 import logging
 import os
 
@@ -7,7 +6,6 @@ import torch
 
 from mvu.dataset import import_from_csv, split_dataset
 from mvu.logger import setupLogging, dumpArgs
-import numpy.random as random
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
