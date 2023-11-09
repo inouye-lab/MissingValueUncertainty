@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import threading
 from typing import Optional, Union, Tuple
 
 import torch
@@ -94,8 +95,12 @@ class MarginalGaussianDistribution(Imputator, Distribution):
     covariance: Tensor
     """Covariance matrix of size `(features,features)`"""
 
-    _generator: Optional[random.Generator]
-    """Temporary generator used during sample generation as we are unable to use the torch multivariate normal"""
+    _local: threading.local
+    """
+    Storage in the local thread for a hack workaround to lack of nice method for gaussian sampling in torch
+    Should swap this from class storage to thread local instance in the future
+    Temporary generator used during sample generation as we are unable to use the torch multivariate normal
+    """
 
     def __init__(self, datasetMeta: DatasetMeta, mean: Tensor, covariance: Tensor):
         datasetMeta.validateFeatures(mean, isVector=True)
@@ -104,6 +109,7 @@ class MarginalGaussianDistribution(Imputator, Distribution):
         self.datasetMeta = datasetMeta
         self.mean = mean
         self.covariance = covariance
+        self._local = threading.local()
 
     @property
     @override
@@ -175,9 +181,9 @@ class MarginalGaussianDistribution(Imputator, Distribution):
 
     @override
     def augment(self, features: Tensor, distSamples: int, rand: Generator = None) -> Tensor:
-        self._generator = random.default_rng(torch.randint(2**32-1, (1,)).item())
+        self._local.generator = random.default_rng(torch.randint(2**32-1, (1,)).item())
         result = super().augment(features, distSamples, rand)
-        self._generator = None
+        self._local.generator = None
         return result
 
     @override
@@ -188,7 +194,7 @@ class MarginalGaussianDistribution(Imputator, Distribution):
         # torch requires positive definite instead of positive-semidefinite, so stuck using numpy here
         # ideally we would always have positive definite,
         # but something about the covariance conditioning does not guarantee that
-        return torch.Tensor(self._generator.multivariate_normal(missingMean, missingCov, distSamples))
+        return torch.Tensor(self._local.generator.multivariate_normal(missingMean, missingCov, distSamples))
 
     @override
     def _normalize(self, augmentedFeatures: Tensor) -> Tensor:
