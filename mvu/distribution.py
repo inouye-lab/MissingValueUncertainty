@@ -124,6 +124,14 @@ class MarginalGaussianDistribution(Imputator, Distribution):
             torch.cov(dataset.features.T)
         )
 
+    @classmethod
+    def fromGaussian(cls, gaussian: "MarginalGaussianDistribution"):
+        return cls(
+            gaussian.datasetMeta,
+            gaussian.mean,
+            gaussian.covariance
+        )
+
     @override
     def _validateFeatures(self, features: Tensor) -> None:
         self.datasetMeta.validateFeatures(features)

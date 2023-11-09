@@ -24,3 +24,15 @@ def estimateResidual(regressor: Regressor, features: Union[Tensor, Dataset], tar
     # make prediction, then return mean squared error
     prediction = regressor.predict(features)
     return torch.mean((targets - prediction) ** 2)
+
+
+def gaussianLogLikelihood(squaredError: Tensor, var: Tensor) -> Tensor:
+    """
+    Evaluates the log likelihood for a gaussian distribution
+    :param squaredError:  Squared difference between true value and expected value
+    :param var:           Predicted variance, should be same size as expected
+    :return:  Log-likelihood score for each sample
+    """
+    clampVar = var.clamp(min=1e-10)
+    return -0.5 * torch.log(torch.mul(2 * torch.pi, clampVar))\
+        - 0.5 / clampVar * squaredError
