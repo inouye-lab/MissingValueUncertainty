@@ -1,9 +1,9 @@
-import _csv
 import logging
 from time import perf_counter
+from typing import Optional
 
 import torch
-from torch import Tensor
+from torch import Tensor, Generator
 
 from .dataset import Dataset
 from .method import Method
@@ -20,6 +20,8 @@ class Experiment:
     """Previously computed residual uncertainty, tensor of size 1"""
     missingPercent: float
     """Missing percent between 0.0 and 1.0"""
+    rand: Optional[Generator]
+    """Allows us to guarantee no matter what order experiments run, we still get the same results when seeded"""
 
     # Results
     mean: Tensor
@@ -29,11 +31,13 @@ class Experiment:
     time: float
     """Duration of this experiment"""
 
-    def __init__(self, method: Method, dataset: Dataset, missingPercent: float, residual: Tensor = Tensor([0])):
+    def __init__(self, method: Method, dataset: Dataset, missingPercent: float, residual: Tensor = Tensor([0]),
+                 rand: Generator = None):
         self.method = method
         self.dataset = dataset
         self.missingPercent = missingPercent
         self.residual = residual
+        self.rand = rand
 
     @property
     def experimentName(self):
@@ -43,7 +47,7 @@ class Experiment:
     def __call__(self, *args, **kwargs):
         """Runs the main experiment, will happen during threading"""
         startTime = perf_counter()
-        self.mean, self.variance = self.method.predictWithUncertainty(self.dataset.features)
+        self.mean, self.variance = self.method.predictWithUncertainty(self.dataset.features, self.rand)
         endTime = perf_counter()
         self.time = endTime - startTime
         logging.info(f"Finished running {self.experimentName} in {self.time}")

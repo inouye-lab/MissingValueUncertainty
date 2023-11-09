@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import threading
-from typing import Optional, Union, Tuple
+from typing import Union, Tuple
 
 import torch
 from overrides import override
@@ -189,7 +189,7 @@ class MarginalGaussianDistribution(Imputator, Distribution):
 
     @override
     def augment(self, features: Tensor, distSamples: int, rand: Generator = None) -> Tensor:
-        self._local.generator = random.default_rng(torch.randint(2**32-1, (1,)).item())
+        self._local.generator = random.default_rng(torch.randint(2**32-1, (1,), generator=rand).item())
         result = super().augment(features, distSamples, rand)
         self._local.generator = None
         return result

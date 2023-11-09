@@ -6,6 +6,7 @@ from threading import Thread
 from time import perf_counter
 from typing import List
 
+import torch
 from torch import Generator
 
 from mvu.dataset import DatasetSplits
@@ -17,7 +18,7 @@ from mvu.method import Method, BasicCombinationMethod, EmpiricalUncertaintyByCou
     MonteCarloMethod
 from mvu.regressor import Regressor
 from mvu.util import estimateResidual
-from mvu.threading import WorkQueue, Worker, distributeTasks
+from mvu.threading import distributeTasks
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -73,12 +74,12 @@ if __name__ == '__main__':
     def imputator(imputator: Imputator):
         """Adds all three basic imputation methods"""
         method(BasicCombinationMethod(regressor, imputator))
-        method(EmpiricalUncertaintyByCount(regressor, imputator, ds.validate, residual, rand))
+        method(EmpiricalUncertaintyByCount(regressor, imputator, ds.validate, residual))
         method(EmpiricalUncertaintyByFeature(regressor, imputator, ds.validate, residual))
 
     def monteCarlo(distribution: Distribution):
         for samples in args.mc_samples:
-            method(MonteCarloMethod(regressor, distribution, samples, rand))
+            method(MonteCarloMethod(regressor, distribution, samples))
 
     gaussian = ConditionalGaussianDistribution.fromDataset(ds.validate)
     # basic
@@ -93,9 +94,15 @@ if __name__ == '__main__':
     experiments: List[Experiment] = []
     totalFeatures = ds.metadata.numGroups
     for missing in args.missing:
+        # all experiments use the same missing values
         missingTest = ds.test.dropCount(int(totalFeatures*missing), rand=rand)
-        for method in methods:
-            experiments.append(Experiment(method, missingTest, missing, residual))
+        # give each experiment its own random state,
+        # goal is to ensure reproducibility despite the fact the order tasks run is non-deterministic
+        seeds = torch.randint(0, 0x7fffffff, (len(methods),), generator=rand)  # max is just 32-bit signed int max
+        for (method, seed) in zip(methods, seeds):
+            newRand = torch.Generator()
+            newRand.manual_seed(seed.item())
+            experiments.append(Experiment(method, missingTest, missing, residual, newRand))
 
     # if -1, give each experiment its own thread
     distributeTasks(experiments, args.threads)

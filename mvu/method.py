@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Tuple, TypeVar, Generic, Dict, Optional
+from typing import Tuple, TypeVar, Generic, Dict
 
 import torch
 from overrides import override
@@ -16,10 +16,11 @@ class Method(ABC):
     """Base class defining a method for handling missing values and missing value uncertainty"""
 
     @abstractmethod
-    def predictWithUncertainty(self, features: Tensor) -> Tuple[Tensor, Tensor]:
+    def predictWithUncertainty(self, features: Tensor, rand: Generator = None) -> Tuple[Tensor, Tensor]:
         """
         Make a prediction using the given features.
         :param features: Input tensor of dimension `(samples, features)` with missingness.
+        :param rand:     Random state for random generation
         :return: Vector of prediction means `(samples,)` and missing value variances `(samples,)`
         """
         pass
@@ -49,18 +50,19 @@ class BasicCombinationMethod(Method):
     def name(self) -> str:
         return f"Basic Imputation - {self.imputator.name}"
 
-    def estimateUncertainty(self, features: Tensor) -> Tensor:
+    def estimateUncertainty(self, features: Tensor, rand: Generator = None) -> Tensor:
         """
         Estimate the missing value uncertainty in the prediction. Default implementation just returns zero
         :param features: Input tensor of dimension `(samples, features)` with missingness.
+        :param rand:     Random state for random generation
         :return: Vector of missing value variances of size `(samples,)`
         """
         return torch.zeros((features.shape[INDEX_SAMPLE],))
 
     @override
-    def predictWithUncertainty(self, features: Tensor) -> Tuple[Tensor, Tensor]:
+    def predictWithUncertainty(self, features: Tensor, rand: Generator = None) -> Tuple[Tensor, Tensor]:
         mean = self.regressor.predict(self.imputator.impute(features))
-        uncertainty = self.estimateUncertainty(features)
+        uncertainty = self.estimateUncertainty(features, rand)
         return mean, uncertainty
 
 
@@ -100,16 +102,17 @@ class EmpiricalUncertaintyMethod(BasicCombinationMethod, ABC, Generic[C]):
         pass
 
     @abstractmethod
-    def mutate(self, cacheKey: C) -> Dataset:
+    def mutate(self, cacheKey: C, rand: Generator = None) -> Dataset:
         """
         Mutates the dataset to look like the given tensor using the cache key.
         :param cacheKey:  Computed cache key from the vector sample
+        :param rand:      Random state to allow randomized mutations
         :return:  Mutated dataset, must be a copy of `self.dataset`.
         """
         pass
 
     @override
-    def estimateUncertainty(self, features: Tensor) -> Tensor:
+    def estimateUncertainty(self, features: Tensor, rand: Generator = None) -> Tensor:
         numSamples = features.shape[INDEX_SAMPLE]
         uncertainty = torch.empty((numSamples,), dtype=torch.float)
         for i in range(numSamples):
@@ -120,8 +123,9 @@ class EmpiricalUncertaintyMethod(BasicCombinationMethod, ABC, Generic[C]):
             if cacheKey in self.cache:
                 uncertainty[i] = self.cache[cacheKey]
             else:
+                # logging.info(f"Cache Miss for {i} from {cacheKey}")
                 # if it's a new combination, need to calculate then cache
-                mutated = self.mutate(cacheKey)
+                mutated = self.mutate(cacheKey, rand)
                 residual = estimateResidual(
                     self.regressor,
                     self.imputator.impute(mutated.features, copy=False),
@@ -136,13 +140,6 @@ class EmpiricalUncertaintyMethod(BasicCombinationMethod, ABC, Generic[C]):
 class EmpiricalUncertaintyByCount(EmpiricalUncertaintyMethod[int]):
     """Empirical uncertainty method that matches the number of missing features"""
 
-    rand: Optional[Generator]
-    """Seed for random feature removal"""
-
-    def __init__(self, regressor: Regressor, imputator: Imputator, dataset: Dataset, residual: Tensor, rand: Generator = None):
-        super().__init__(regressor, imputator, dataset, residual)
-        self.rand = rand
-
     @property
     @override
     def name(self) -> str:
@@ -153,8 +150,8 @@ class EmpiricalUncertaintyByCount(EmpiricalUncertaintyMethod[int]):
         return self.dataset.metadata.countDistinctFeatures(torch.isnan(vector))
 
     @override
-    def mutate(self, cacheKey: int) -> Dataset:
-        return self.dataset.dropCount(cacheKey, rand=self.rand)
+    def mutate(self, cacheKey: int, rand: Generator = None) -> Dataset:
+        return self.dataset.dropCount(cacheKey, rand=rand)
 
 
 class EmpiricalUncertaintyByFeature(EmpiricalUncertaintyMethod[Tensor]):
@@ -173,7 +170,7 @@ class EmpiricalUncertaintyByFeature(EmpiricalUncertaintyMethod[Tensor]):
         return torch.isnan(vector)
 
     @override
-    def mutate(self, cacheKey: Tensor) -> Dataset:
+    def mutate(self, cacheKey: Tensor, rand: Generator = None) -> Dataset:
         return self.dataset.dropSpecified(cacheKey)
 
 
@@ -184,26 +181,23 @@ class MonteCarloMethod(Method):
     distribution: Distribution
     samples: int
     """Number of Monte Carlo samples to take"""
-    rand: Optional[Generator]
-    """Seed for random samples"""
 
-    def __init__(self, regressor: Regressor, distribution: Distribution, samples: int, rand: Generator = None):
+    def __init__(self, regressor: Regressor, distribution: Distribution, samples: int):
         self.regressor = regressor
         self.distribution = distribution
         self.samples = samples
-        self.rand = rand
 
     @property
     @override
     def name(self) -> str:
         return f"Monte Carlo - {self.distribution.name} - {self.samples} samples"
 
-    def predictWithUncertainty(self, features: Tensor) -> Tuple[Tensor, Tensor]:
+    def predictWithUncertainty(self, features: Tensor, rand: Generator = None) -> Tuple[Tensor, Tensor]:
         dataSamples = features.shape[INDEX_SAMPLE]
         numFeatures = features.shape[INDEX_FEATURE]
 
         # start by computing augmented data with samples
-        augmented = self.distribution.augment(features, self.samples, self.rand)
+        augmented = self.distribution.augment(features, self.samples, rand)
 
         # reshape that input into a tensor of `(samples, features)`
         regressorInput = augmented.reshape((dataSamples*self.samples, numFeatures))
