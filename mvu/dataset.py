@@ -193,6 +193,19 @@ class DatasetMeta(object):
             return features.reshape(-1)
         return features
 
+    def countDistinctFeatures(self, indexes: Tensor) -> int:
+        """
+        Counts the number of distinct features referred to by the given index vector.
+        :param indexes:   Index vector, should be a valid index to a feature tensor.
+        :return:  Number of distinct features.
+        """
+        if self.groups is None:
+            if indexes.dtype == torch.bool:
+                return torch.count_nonzero(indexes).item()
+            else:
+                return len(torch.unique(indexes))
+        return len(torch.unique(self.groups[indexes]))
+
 
 class Dataset(object):
     """Object representing a single dataset of features and targets. Provides guarantee the feature count matches"""
