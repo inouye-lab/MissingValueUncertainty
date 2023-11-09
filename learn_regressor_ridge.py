@@ -31,8 +31,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # start logging
-    outputFolder = os.path.join(args.output, args.name)
-    date = setupLogging(args.verbose, os.path.join(outputFolder, "log"), args=args)
+    outputFolder = args.output
+    date = setupLogging(args.verbose, os.path.join(outputFolder, "log"), args.name, args=args)
     logging.info(f"Starting to train {args.name}")
 
     # load in dataset
@@ -75,6 +75,6 @@ if __name__ == '__main__':
 
     # save the model
     # wrapping in RidgeRegressor makes it more convenient to load later
-    outputPath = os.path.join(outputFolder, f"{date}.pklz")
+    outputPath = os.path.join(outputFolder, f"{args.name}-{date}.pklz")
     logging.info(f"Saving model to {outputPath}")
     regressor.save(outputPath)

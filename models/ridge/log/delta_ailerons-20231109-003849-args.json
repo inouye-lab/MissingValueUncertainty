@@ -1,0 +1,1 @@
+{"name": "delta_ailerons", "path": "./datasets/binary/delta_ailerons.pklz", "output": "./models/ridge/", "params": {"solver": "auto"}, "cv_params": null, "seed": 1337, "verbose": 1}

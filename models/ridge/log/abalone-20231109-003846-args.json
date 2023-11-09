@@ -1,0 +1,1 @@
+{"name": "abalone", "path": "./datasets/binary/abalone.pklz", "output": "./models/ridge/", "params": {"solver": "auto"}, "cv_params": null, "seed": 1337, "verbose": 1}

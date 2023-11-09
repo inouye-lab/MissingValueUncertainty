@@ -6,7 +6,7 @@ learn() {
   local name="$1"
   echo
   echo
-  echo "Importing $name"
+  echo "Learning $name"
   python learn_regressor_ridge.py $name "./datasets/binary/$name.pklz" --output ./models/ridge/ \
     --params '{"solver": "auto"}' --seed 1337
 }
