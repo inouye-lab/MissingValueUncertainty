@@ -18,8 +18,8 @@ class Distribution(ABC):
     Implementers will also often implement `Imputator` to support distribution based imputation.
     """
 
-    @abstractmethod
     @property
+    @abstractmethod
     def name(self) -> str:
         """Gets the name of this distribution for saving in result CSV."""
         pass
@@ -105,8 +105,8 @@ class MarginalGaussianDistribution(Imputator, Distribution):
         self.mean = mean
         self.covariance = covariance
 
-    @override
     @property
+    @override
     def name(self) -> str:
         return "Marginal Gaussian"
 
@@ -215,8 +215,8 @@ class ConditionalGaussianDistribution(MarginalGaussianDistribution):
         else:
             self.covarianceInv = covarianceInv
 
-    @override
     @property
+    @override
     def name(self) -> str:
         return "Conditional Gaussian"
 

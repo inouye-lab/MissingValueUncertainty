@@ -18,8 +18,8 @@ def containsMissing(features: Tensor) -> bool:
 
 
 class Imputator(ABC):
-    @abstractmethod
     @property
+    @abstractmethod
     def name(self) -> str:
         """Gets the name of this imputator for saving in result CSV."""
         pass
@@ -54,8 +54,8 @@ class ZeroImputator(Imputator):
     """
     # TODO: consider other value imputators, though that will mess with onehot
 
-    @override
     @property
+    @override
     def name(self) -> str:
         return "Zero Imputation"
 
@@ -75,8 +75,8 @@ class ConstantImputator(Imputator):
     _name: str
     """Name of the constant, e.g. "mean" or "median"."""
 
-    @override
     @property
+    @override
     def name(self) -> str:
         return f"{self._name} Imputation"
 
