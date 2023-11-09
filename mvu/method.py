@@ -154,7 +154,7 @@ class EmpiricalUncertaintyByCount(EmpiricalUncertaintyMethod[int]):
         return self.dataset.dropCount(cacheKey, rand=rand)
 
 
-class EmpiricalUncertaintyByFeature(EmpiricalUncertaintyMethod[Tensor]):
+class EmpiricalUncertaintyByFeature(EmpiricalUncertaintyMethod[Tuple[bool]]):
     """
     Empirical uncertainty method that matches the specific missing features.
     Key is a boolean tensor of features to remove of size `(features,)`
@@ -166,12 +166,12 @@ class EmpiricalUncertaintyByFeature(EmpiricalUncertaintyMethod[Tensor]):
         return f"Empirical By Feature - {self.imputator.name}"
 
     @override
-    def cacheKey(self, vector: Tensor) -> Tensor:
-        return torch.isnan(vector)
+    def cacheKey(self, vector: Tensor) -> Tuple[bool]:
+        return tuple(torch.isnan(vector).tolist())
 
     @override
-    def mutate(self, cacheKey: Tensor, rand: Generator = None) -> Dataset:
-        return self.dataset.dropSpecified(cacheKey)
+    def mutate(self, cacheKey: Tuple[bool], rand: Generator = None) -> Dataset:
+        return self.dataset.dropSpecified(torch.tensor(cacheKey))
 
 
 class MonteCarloMethod(Method):
