@@ -50,7 +50,7 @@ class Experiment:
     @property
     def experimentName(self):
         """Name of the overall experiment"""
-        return f"{self.method.name} - {int(self.missingPercent*100)}% missing"
+        return f"{self.dataset.metadata.name} - {self.method.name} - {int(self.missingPercent*100)}% missing"
 
     def __call__(self, *args, **kwargs):
         """Runs the main experiment, will happen during threading"""

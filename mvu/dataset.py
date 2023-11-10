@@ -1,6 +1,4 @@
-import gzip
 import logging
-import pickle
 from typing import List, Optional
 
 import pandas as pd
@@ -362,7 +360,7 @@ def import_from_csv(name: str, csv: str, targetFeature: str,
             #else:
             # TODO: consider if its worth merging true and false for a single boolean into one feature
             # in theory, its easier for the NN to handle separately
-            # however the main reason I did not was it makes it easier to identify boolean features for normalizing
+            # however the main reason I did not was it makes it harder to identify boolean features for normalizing
             featureSizes[fIndex] = len(unique)
             for value in unique:
                 df[f"{featureName} {value}"] = (df[featureName] == value).astype(float)

@@ -2,7 +2,6 @@ import argparse
 import csv
 import logging
 import os
-from threading import Thread
 from time import perf_counter
 from typing import List
 
@@ -91,6 +90,7 @@ if __name__ == '__main__':
     monteCarlo(gaussian)
 
     # setup experiments list
+    logging.info(f"Setting up experiments with {len(methods)} methods and {args.missing} missing percentages")
     experiments: List[Experiment] = []
     totalFeatures = ds.metadata.numGroups
     for missing in args.missing:
@@ -106,11 +106,16 @@ if __name__ == '__main__':
 
     # if -1, give each experiment its own thread
     distributeTasks(experiments, args.threads)
+    successful = len([exp for exp in experiments if exp.completed])
+    logging.info(f"Finished running {successful}/{len(experiments)} experiments")
 
     # save all experiment results to the relevant CSV files
     outputName = f"{args.name}-{date}"
-    with open(os.path.join(outputFolder, f"{outputName}-summary.csv"), "w") as summaryFile:
-        with open(os.path.join(outputFolder, f"{outputName}-all.csv"), "w") as allFile:
+    summaryPath = os.path.join(outputFolder, f"{outputName}-summary.csv")
+    allPath = os.path.join(outputFolder, f"{outputName}-all.csv")
+    logging.info(f"Saving results to {summaryPath} and {allPath}")
+    with open(summaryPath, "w") as summaryFile:
+        with open(allPath, "w") as allFile:
             # summary CSV has one row per experiment
             summaryCsv = csv.writer(summaryFile)
             # all CSV has one row per sample
@@ -121,3 +126,4 @@ if __name__ == '__main__':
             # write rows
             for experiment in experiments:
                 experiment.writeResults(summaryCsv, allCsv)
+    logging.info("Finished saving results")

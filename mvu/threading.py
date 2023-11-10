@@ -63,6 +63,7 @@ def distributeTasks(tasks: List[callable], numThreads: int) -> None:
 
     # if only a single task, just run it without dealing with threads
     if len(tasks) == 1:
+        logging.info(f"Running a single task on the main thread")
         tasks[0]()
         return
 
