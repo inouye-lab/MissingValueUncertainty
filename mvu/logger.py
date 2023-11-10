@@ -4,7 +4,17 @@ import os
 import sys
 from argparse import Namespace
 from datetime import datetime
-from typing import Optional
+from types import TracebackType
+from typing import Type, Optional
+
+
+def handleException(excType: Type[BaseException], excValue: BaseException, excTraceback: Optional[TracebackType],
+                    message: str = "Uncaught Exception") -> None:
+    """Function passed to python internals to handle exceptions by the logger"""
+    if issubclass(excType, KeyboardInterrupt):
+        sys.__excepthook__(excType, excValue, excTraceback)
+    else:
+        logging.critical(message, exc_info=(excType, excValue, excTraceback))
 
 
 def setupLogging(verbosity: int, outputDir: str = None, outputName: str = None, args: Namespace = None) -> str:
@@ -31,6 +41,10 @@ def setupLogging(verbosity: int, outputDir: str = None, outputName: str = None, 
         root.setLevel(logging.INFO)
     elif verbosity == 2:
         root.setLevel(logging.DEBUG)
+
+    # add exception handler so those get logged
+    sys.excepthook = handleException
+    logging.captureWarnings(True)
 
     # optionally log to file
     date = datetime.now().strftime("%Y%m%d-%H%M%S")
