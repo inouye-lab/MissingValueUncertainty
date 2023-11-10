@@ -6,6 +6,7 @@ import torch
 from torch import Tensor, Generator
 
 from .dataset import Dataset
+from .logger import handleException
 from .method import Method
 from .util import gaussianLogLikelihood
 
@@ -24,9 +25,11 @@ class Experiment:
     """Allows us to guarantee no matter what order experiments run, we still get the same results when seeded"""
 
     # Results
-    mean: Tensor
+    completed: bool
+    """If true, this thread completed running"""
+    mean: Optional[Tensor]
     """Experiment prediction, size is `(samples,)` based on `dataset`"""
-    variance: Tensor
+    variance: Optional[Tensor]
     """Experiment variance, size is `(samples,)` based on `dataset`"""
     time: float
     """Duration of this experiment"""
@@ -38,6 +41,11 @@ class Experiment:
         self.missingPercent = missingPercent
         self.residual = residual
         self.rand = rand
+        # results
+        self.completed = False
+        self.mean = None
+        self.variance = None
+        self.time = 0
 
     @property
     def experimentName(self):
@@ -46,11 +54,19 @@ class Experiment:
 
     def __call__(self, *args, **kwargs):
         """Runs the main experiment, will happen during threading"""
+        logging.info(f"Started running {self.experimentName}")
         startTime = perf_counter()
-        self.mean, self.variance = self.method.predictWithUncertainty(self.dataset.features, self.rand)
-        endTime = perf_counter()
-        self.time = endTime - startTime
-        logging.info(f"Finished running {self.experimentName} in {self.time}")
+        try:
+            self.mean, self.variance = self.method.predictWithUncertainty(self.dataset.features, self.rand)
+            endTime = perf_counter()
+            self.time = endTime - startTime
+            self.completed = True
+            logging.info(f"Finished running {self.experimentName} in {self.time}")
+        except BaseException as e:
+            endTime = perf_counter()
+            self.time = endTime - startTime
+            handleException(type(e), e, e.__traceback__,
+                            message=f"Failed to finish {self.experimentName} after {self.time}")
 
     @classmethod
     def writeResultHeaders(cls, summaryCsv, allCsv):
@@ -68,6 +84,10 @@ class Experiment:
         ])
 
     def writeResults(self, summaryCsv, allCsv):
+        if not self.completed:
+            logging.info(f"Skipping saving {self.experimentName} as it did not complete")
+            return
+
         """Writes the results to the relevant CSV files"""
         # data we have ready: name, missing percent, runtime, missing variance, residual
         # compute remaining data
@@ -90,4 +110,3 @@ class Experiment:
                 missingVariance.item(), self.residual.item(), totalVariance.item(),
                 squaredError.item(), ll.item()
             ])
-
