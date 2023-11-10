@@ -1,3 +1,4 @@
+import logging
 from abc import ABC, abstractmethod
 import threading
 from typing import Union, Tuple
@@ -108,6 +109,8 @@ class MarginalGaussianDistribution(Imputator, Distribution):
             "Covariance matrix must be square and of input size"
         self.datasetMeta = datasetMeta
         self.mean = mean
+        if not (covariance == covariance.T).all():
+            logging.warning("Covariance matrix is not symmetric")
         self.covariance = covariance
         self._local = threading.local()
 
@@ -225,7 +228,7 @@ class ConditionalGaussianDistribution(MarginalGaussianDistribution):
         assert covarianceInv is None or covarianceInv.shape == covariance.shape, \
             "Covariance inverse matrix must be square and of input size"
         if covarianceInv is None:
-            self.covarianceInv = torch.linalg.pinv(covariance)
+            self.covarianceInv = torch.linalg.pinv(covariance, hermitian=True)
         else:
             self.covarianceInv = covarianceInv
 
@@ -245,7 +248,7 @@ class ConditionalGaussianDistribution(MarginalGaussianDistribution):
         # nonzero returns column vectors, so we need to transpose the second to treat as a row vector
         corrMatrix = self.covariance[missingIndices, observedIndices.T]
         # Inverted partition of covariance containing just observed indexes
-        obsCovInv = torch.linalg.pinv(self.covariance[observedIndices, observedIndices.T])
+        obsCovInv = torch.linalg.pinv(self.covariance[observedIndices, observedIndices.T], hermitian=True)
         # Final computed conditional mean
         condMean = self.mean[missingMask] + torch.matmul(
             torch.matmul(corrMatrix, obsCovInv),
@@ -257,11 +260,11 @@ class ConditionalGaussianDistribution(MarginalGaussianDistribution):
 
         # Final computed conditional variance
         # The following formula is more efficient (no need to compute an additional inverse)
-        # but leads to a crash on some datasets as it produces a matrix that is not positive semi-definiate
-        # condVar = covariance[missingIndexes, missingIndexes] \
+        # but leads to a crash on some datasets as it produces a matrix that is not positive semi-definite
+        # condVar = self.covariance[missingIndices, missingIndices.T] \
         #     - torch.matmul(torch.matmul(corrMatrix, obsCovInv), corrMatrix.T)
 
         # this formula is mathematically equivalent, but is less efficient
         # however, we should be guaranteed a valid covariance matrix at the end
-        condVar = torch.linalg.pinv(self.covarianceInv[missingIndices, missingIndices.T])
+        condVar = torch.linalg.pinv(self.covarianceInv[missingIndices, missingIndices.T], hermitian=True)
         return condMean, condVar
