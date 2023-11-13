@@ -1,7 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
 import threading
-from typing import Union, Tuple
+from typing import Union, Tuple, Optional
 
 import torch
 from overrides import override
@@ -109,7 +109,7 @@ class MarginalGaussianDistribution(Imputator, Distribution):
             "Covariance matrix must be square and of input size"
         self.datasetMeta = datasetMeta
         self.mean = mean
-        if not (covariance == covariance.T).all():
+        if not torch.eq(covariance, covariance.T).all():
             logging.warning("Covariance matrix is not symmetric")
         self.covariance = covariance
         self._local = threading.local()
@@ -120,19 +120,20 @@ class MarginalGaussianDistribution(Imputator, Distribution):
         return "Marginal Gaussian"
 
     @classmethod
-    def fromDataset(cls, dataset: Dataset):
+    def fromDataset(cls, dataset: Dataset, *args, **kwargs):
         return cls(
             dataset.metadata,
             torch.mean(dataset.features, dim=INDEX_SAMPLE),
-            torch.cov(dataset.features.T)
+            torch.cov(dataset.features.T), *args, **kwargs
         )
 
     @classmethod
-    def fromGaussian(cls, gaussian: "MarginalGaussianDistribution"):
+    def fromGaussian(cls, gaussian: "MarginalGaussianDistribution", *args, **kwargs):
         return cls(
             gaussian.datasetMeta,
             gaussian.mean,
-            gaussian.covariance
+            gaussian.covariance,
+            *args, **kwargs
         )
 
     @override
@@ -220,17 +221,39 @@ class MarginalGaussianDistribution(Imputator, Distribution):
 class ConditionalGaussianDistribution(MarginalGaussianDistribution):
     """Distribution implementing a conditional gaussian distribution."""
 
-    covarianceInv: Tensor
-    """Inverted covariance matrix of size `(features,features)`, speeds up some calculations"""
+    leastSquares: bool
+    """
+    If true, uses the least squares approach for operations involving the inverse of the observed covariances.
+    If false, uses the pseudo inverse.
+    """
+    covarianceInv: Optional[Tensor]
+    """
+    If not None, computes the covariance using the schur complement of the observed covariances.
+    If None, computes the covariance using matrix multiplications with the inverse of the observed covariances.
+    """
+    hermitian: bool
+    """
+    If true, matrix inversions use eigen value decomposition using the lower triangle for inverses.
+    If false, matrix inverses use singular value decomposition.
+    Unused if `leastSquares` is True and not using `schur`.
+    """
 
-    def __init__(self, datasetMeta: DatasetMeta, mean: Tensor, covariance: Tensor, covarianceInv: Tensor = None):
+    def __init__(self, datasetMeta: DatasetMeta, mean: Tensor, covariance: Tensor,
+                 schur: Union[Tensor, bool] = False, leastSquares: bool = True, hermitian: bool = True):
+
         super().__init__(datasetMeta, mean, covariance)
-        assert covarianceInv is None or covarianceInv.shape == covariance.shape, \
-            "Covariance inverse matrix must be square and of input size"
-        if covarianceInv is None:
-            self.covarianceInv = torch.linalg.pinv(covariance, hermitian=True)
+        self.leastSquares = leastSquares
+        self.hermitian = hermitian
+
+        # if we are using schur, we want the inverted covariance matrix, faster to compute just once
+        # noinspection PySimplifyBooleanCheck
+        if schur == True:
+            self.covarianceInv = torch.linalg.pinv(covariance, hermitian=hermitian)
+        elif schur == False:
+            self.covarianceInv = None
         else:
-            self.covarianceInv = covarianceInv
+            assert schur.shape == covariance.shape, "Covariance inverse matrix must be square and of input size"
+            self.covarianceInv = schur
 
     @property
     @override
@@ -244,27 +267,52 @@ class ConditionalGaussianDistribution(MarginalGaussianDistribution):
         observedIndices = observedMask.nonzero()
         missingIndices = missingMask.nonzero()
 
-        # Partition of covariance containing covariances between missing indexes and observed indexes
+        # decide whether to use the least squares approach or the pseudo inverse to multiply observed covariances
+        # by the mean & observation difference
+
+        # observed partition of the covariances
         # nonzero returns column vectors, so we need to transpose the second to treat as a row vector
+        obsCov = self.covariance[observedIndices, observedIndices.T]
+        # offset of the observations from the mean
+        obsOffset = vector[observedMask] - self.mean[observedMask]
+        # inverse of the observed covariances, None if self.leastSquares
+        obsCovInv: Optional[Tensor]
+        # multiplication of obsCovInv and obsOffset
+        scaledOffset: Tensor
+        if self.leastSquares:
+            scaledOffset = torch.linalg.lstsq(obsCov, obsOffset).solution
+        else:
+            obsCovInv = torch.linalg.pinv(obsCov, hermitian=self.hermitian)
+            scaledOffset = torch.matmul(obsCovInv, obsOffset)
+        # Partition of covariance containing covariances between missing indexes and observed indexes
         corrMatrix = self.covariance[missingIndices, observedIndices.T]
-        # Inverted partition of covariance containing just observed indexes
-        obsCovInv = torch.linalg.pinv(self.covariance[observedIndices, observedIndices.T], hermitian=True)
         # Final computed conditional mean
-        condMean = self.mean[missingMask] + torch.matmul(
-            torch.matmul(corrMatrix, obsCovInv),
-            vector[observedMask] - self.mean[observedMask]
-        )
+        condMean = self.mean[missingMask] + torch.matmul(corrMatrix, scaledOffset)
+
         # Quick exit if we do not care about the conditional covariance
         if not returnCovariance:
             return condMean
 
         # Final computed conditional variance
-        # The following formula is more efficient (no need to compute an additional inverse)
-        # but leads to a crash on some datasets as it produces a matrix that is not positive semi-definite
-        # condVar = self.covariance[missingIndices, missingIndices.T] \
-        #     - torch.matmul(torch.matmul(corrMatrix, obsCovInv), corrMatrix.T)
+        if self.covarianceInv is not None:
+            # compute the covariance using the schur complement,
+            # this tends to be more stable than matrix multiplications but can be slower due to the extra inverse
+            condVar = torch.linalg.pinv(self.covarianceInv[missingIndices, missingIndices.T], hermitian=self.hermitian)
+        else:
+            # compute the covariance using an offset from the unobserved covariances,
+            # requires more matrix multiplications but fewer inverses,
+            # can potentially lead to a crash when not using the least squares approach on some datasets
+            # multiplication of obsCovInv and corrMatrix.T
+            scaledCorr: Tensor
+            if self.leastSquares:
+                scaledCorr = torch.linalg.lstsq(obsCov, corrMatrix.T).solution
+            else:
+                scaledCorr = torch.matmul(obsCovInv, corrMatrix.T)
+            condVar = self.covariance[missingIndices, missingIndices.T] - torch.matmul(corrMatrix, scaledCorr)
 
-        # this formula is mathematically equivalent, but is less efficient
-        # however, we should be guaranteed a valid covariance matrix at the end
-        condVar = torch.linalg.pinv(self.covarianceInv[missingIndices, missingIndices.T], hermitian=True)
+        # ensure symmetry of covariance matrix
+        if not torch.eq(condVar, condVar.T).all():
+            # logging.warning(f"Covariance matrix symmetry is off by {torch.sum(torch.abs(condVar - condVar.T))}")
+            condVar = (condVar + condVar.T) / 2
+
         return condMean, condVar

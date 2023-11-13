@@ -34,6 +34,13 @@ if __name__ == '__main__':
     parser.add_argument("--mc_samples", type=int, nargs='*', default=[],
                         help="Number of Monte Carlo samples to take")
 
+    parser.add_argument("--gaussian_pseudo_inverse", action='store_true',
+                        help='If set, uses the pseudo-inverse for multiplications for the gaussian methods.'
+                             'If unset, uses the least squares approach.')
+    parser.add_argument("--gaussian_schur", action='store_true',
+                        help='If set, uses the schur complement to compute the gaussian covariance matrix.'
+                             'If unset, uses matrix multiplications respecting gaussian_pseudo_inverse')
+
     parser.add_argument('--seed', type=int, default=1337,
                         help='Seed for random permutations')
     parser.add_argument('-v', '--verbose', type=int, nargs='?', default=1, help='Logging verbosity level')
@@ -80,7 +87,9 @@ if __name__ == '__main__':
         for samples in args.mc_samples:
             method(MonteCarloMethod(regressor, distribution, samples))
 
-    gaussian = ConditionalGaussianDistribution.fromDataset(ds.validate)
+    gaussian = ConditionalGaussianDistribution.fromDataset(
+        ds.validate, schur=args.gaussian_schur, leastSquares=not args.gaussian_pseudo_inverse
+    )
     # basic
     imputator(ZeroImputator())
     imputator(ConstantImputator(ds.metadata.normalizeFeatures(gaussian.mean), "Mean"))
