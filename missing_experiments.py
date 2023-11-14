@@ -10,7 +10,7 @@ from torch import Generator
 
 from mvu.dataset import DatasetSplits
 from mvu.distribution import ConditionalGaussianDistribution, Distribution, MarginalGaussianDistribution
-from mvu.experiment import Experiment
+from mvu.experiment import Experiment, appendExperiments
 from mvu.imputator import ZeroImputator, ConstantImputator, Imputator
 from mvu.logger import setupLogging
 from mvu.method import Method, BasicCombinationMethod, EmpiricalUncertaintyByCount, EmpiricalUncertaintyByFeature, \
@@ -24,15 +24,21 @@ if __name__ == '__main__':
 
     # Basic
     parser.add_argument("name", type=str, help='Name of the dataset to parse')
-    parser.add_argument("--dataset", type=str, default=None, help='Path to the pretrained regressor to load')
+    parser.add_argument("--dataset", type=str, default=None, help='Path to processed dataset to load')
     parser.add_argument("--regressor", type=str, help='Path to the pretrained regressor to load')
     parser.add_argument("--output", type=str, default="./results/", help='Location to save result CSV')
 
     # experiment parameters
     parser.add_argument("--threads", type=int, default=-1, help='Number of worker threads to run')
-    parser.add_argument("--missing", type=float, nargs='*', help="Percent of data to treat as missing")
     parser.add_argument("--mc_samples", type=int, nargs='*', default=[],
                         help="Number of Monte Carlo samples to take")
+
+    parser.add_argument("--missing", type=float, default=[], nargs='*',
+                        help="Percent of data to treat as missing. If undefined, runs no missing percent experiments")
+    parser.add_argument("--feature_impact", action='store_true',
+                        help='If set, runs the feature impact experiments by making each feature separately missing.')
+    parser.add_argument("--inverted_feature_impact", action='store_true',
+                        help='If set, runs the feature impact experiments by making each feature only present.')
 
     parser.add_argument("--gaussian_pseudo_inverse", action='store_true',
                         help='If set, uses the pseudo-inverse for multiplications for the gaussian methods.'
@@ -50,6 +56,10 @@ if __name__ == '__main__':
     # start logging
     outputFolder = args.output
     date = setupLogging(args.verbose, os.path.join(outputFolder, "log"), args.name, args=args)
+
+    # validate arguments
+    assert len(args.missing) > 0 or args.feature_impact or args.inverted_feature_impact, \
+        "Must either run feature impact or missing percent"
 
     # load in regressor
     logging.info(f"Loading regressor from {args.regressor}")
@@ -99,19 +109,49 @@ if __name__ == '__main__':
     monteCarlo(gaussian)
 
     # setup experiments list
-    logging.info(f"Setting up experiments with {len(methods)} methods and {args.missing} missing percentages")
-    experiments: List[Experiment] = []
     totalFeatures = ds.metadata.numGroups
+    expName = ""
+    if len(args.missing) > 0:
+        expName += f", missing percentages {args.missing}"
+    if args.feature_impact:
+        expName += f", feature impact over {totalFeatures} features"
+    if args.inverted_feature_impact:
+        expName += f", inverted feature impact over {totalFeatures} features"
+    logging.info(f"Setting up experiments with {len(methods)} methods{expName}")
+    experiments: List[Experiment] = []
+
+    # missing percentage experiments
     for missing in args.missing:
         # all experiments use the same missing values
+        missingName = f"{int(missing*100)}% missing"
+        logging.info(f"Setting up experiments for {missingName}")
         missingTest = ds.test.dropCount(int(totalFeatures*missing), rand=rand)
-        # give each experiment its own random state,
-        # goal is to ensure reproducibility despite the fact the order tasks run is non-deterministic
-        seeds = torch.randint(0, 0x7fffffff, (len(methods),), generator=rand)  # max is just 32-bit signed int max
-        for (method, seed) in zip(methods, seeds):
-            newRand = torch.Generator()
-            newRand.manual_seed(seed.item())
-            experiments.append(Experiment(method, missingTest, missing, residual, newRand))
+        appendExperiments(experiments, methods, missingTest, missingName, missing, residual, rand)
+
+    # individual missing feature experiment
+    if args.feature_impact or args.inverted_feature_impact:
+        # get group indices for dropping
+        groups = ds.metadata.groups
+        if groups is None:
+            groups = torch.arange(0, totalFeatures)
+
+        if args.feature_impact:
+            # create experiment for each feature
+            for index in range(totalFeatures):
+                featureName = ds.metadata.featureName(index)
+                logging.info(f"Setting up experiments for '{featureName}'")
+
+                missingTest = ds.test.dropSpecified(torch.eq(groups, index))
+                appendExperiments(experiments, methods, missingTest, featureName, None, residual, rand)
+
+        if args.inverted_feature_impact:
+            # create experiment for each feature
+            for index in range(totalFeatures):
+                featureName = "not " + ds.metadata.featureName(index)
+                logging.info(f"Setting up experiments for '{featureName}'")
+
+                missingTest = ds.test.dropSpecified(torch.ne(groups, index))
+                appendExperiments(experiments, methods, missingTest, featureName, None, residual, rand)
 
     # if -1, give each experiment its own thread
     distributeTasks(experiments, args.threads)

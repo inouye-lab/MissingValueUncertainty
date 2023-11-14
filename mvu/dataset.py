@@ -1,4 +1,5 @@
 import logging
+import os.path
 from typing import List, Optional
 
 import pandas as pd
@@ -203,6 +204,29 @@ class DatasetMeta(object):
             else:
                 return len(torch.unique(indexes))
         return len(torch.unique(self.groups[indexes]))
+
+    def featureName(self, index: int) -> str:
+        """
+        Gets the name of the feature at the given index
+        :param index:  Index of the feature
+        :return: Name of the feature
+        """
+        assert 0 <= index < self.numGroups
+
+        # no groups, just fetch the label
+        if self.groups is None:
+            return self.labels[index]
+        # if groups defined, fetch matching indices
+        indices = torch.eq(self.groups, index)
+        # assumption: all features in a group are adjacent
+        count = torch.count_nonzero(indices).item()  # number of elements in this feature
+        first = indices.int().argmax()                     # first index of the feature
+        if count == 1:
+            return self.labels[first]
+        else:
+            return os.path.commonprefix(self.labels[slice(first, first+count)]).rstrip()
+
+
 
 
 class Dataset(object):
