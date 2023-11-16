@@ -1,10 +1,13 @@
 from abc import ABC, abstractmethod
+from typing import Optional
 
 import torch
 from overrides import override
+from pandas import DataFrame
+from statsmodels.imputation.mice import MICEData
 from torch import Tensor
 
-from .dataset import validateFeatures
+from .dataset import validateFeatures, DatasetMeta, INDEX_FEATURE, INDEX_SAMPLE
 
 
 def containsMissing(features: Tensor) -> bool:
@@ -89,3 +92,55 @@ class ConstantImputator(Imputator):
         validateFeatures(features, featureCount)
         for i in range(featureCount):
             features[torch.isnan(features[:, i]), i] = self.constant[i]
+
+
+class MiceImputator(Imputator):
+    metadata: DatasetMeta
+    """Dataset metadata for constructing the dataframe"""
+    iterations: int
+    """Number of iterations to run"""
+    additionalData: Optional[Tensor]
+    """Additional data to augment MICE with"""
+    augmentName: str
+    """Name to use for the data augmentation"""
+
+    def __init__(self, metadata: DatasetMeta, iterations: int, additionalData: Tensor = None, augmentName: str = None):
+        self.metadata = metadata
+        self.iterations = iterations
+        self.additionalData = additionalData
+        self.augmentName = augmentName
+
+    @property
+    @override
+    def name(self) -> str:
+        name = f"Mice {self.iterations} Imputation"
+        if self.augmentName is not None:
+            name += f" - {self.augmentName} Augment"
+        return name
+
+    def _impute(self, features: Tensor) -> None:
+        # short circuit early if not augmented and a whole column of features is missing
+        sampleCount = features.shape[INDEX_SAMPLE]
+        if self.additionalData is None:
+            isMissing = torch.isnan(features)
+            invalidFeatures = []
+            for i in range(features.shape[INDEX_FEATURE]):
+                if torch.count_nonzero(isMissing[:, i]) == sampleCount:
+                    invalidFeatures.append(self.metadata.labels[i])
+            if len(invalidFeatures) > 0:
+                raise ValueError("Non-augmented MICE requires at least 1 sample with each feature, "
+                                 f"invalid features {invalidFeatures}")
+
+        # augment data if requested
+        inputs = features
+        if self.additionalData is not None:
+            inputs = torch.concat((features, self.additionalData))
+
+        # run mice
+        mouse = MICEData(DataFrame(inputs.numpy(),
+                                   columns=[label.replace(" ", "_") for label in self.metadata.labels]))
+        mouse.update_all(self.iterations)
+
+        # pull result into features
+        features[:, :] = torch.from_numpy(mouse.next_sample().values[:sampleCount, :])
+        self.metadata.normalizeFeatures(features, copy=False)

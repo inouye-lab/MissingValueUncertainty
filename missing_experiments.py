@@ -11,7 +11,7 @@ from torch import Generator
 from mvu.dataset import DatasetSplits
 from mvu.distribution import ConditionalGaussianDistribution, Distribution, MarginalGaussianDistribution
 from mvu.experiment import Experiment, appendExperiments
-from mvu.imputator import ZeroImputator, ConstantImputator, Imputator
+from mvu.imputator import ZeroImputator, ConstantImputator, Imputator, MiceImputator
 from mvu.logger import setupLogging
 from mvu.method import Method, BasicCombinationMethod, EmpiricalUncertaintyByCount, EmpiricalUncertaintyByFeature, \
     MonteCarloMethod
@@ -32,6 +32,8 @@ if __name__ == '__main__':
     parser.add_argument("--threads", type=int, default=-1, help='Number of worker threads to run')
     parser.add_argument("--mc_samples", type=int, nargs='*', default=[],
                         help="Number of Monte Carlo samples to take")
+    parser.add_argument("--mice_iterations", type=int, nargs='*', default=[],
+                        help="Number of mice iterations to run")
 
     parser.add_argument("--missing", type=float, default=[], nargs='*',
                         help="Percent of data to treat as missing. If undefined, runs no missing percent experiments")
@@ -107,6 +109,11 @@ if __name__ == '__main__':
     # monte carlo
     monteCarlo(MarginalGaussianDistribution.fromGaussian(gaussian))
     monteCarlo(gaussian)
+    # mice
+    for iterations in args.mice_iterations:
+        # some of the non-augmented MICE will fail, but the experiments are setup to handle that
+        imputator(MiceImputator(ds.metadata, iterations))
+        imputator(MiceImputator(ds.metadata, iterations, ds.train.features, "Training Features"))
 
     # setup experiments list
     totalFeatures = ds.metadata.numGroups
