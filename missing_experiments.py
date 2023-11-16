@@ -100,7 +100,7 @@ if __name__ == '__main__':
             method(MonteCarloMethod(regressor, distribution, samples))
 
     gaussian = ConditionalGaussianDistribution.fromDataset(
-        ds.validate, schur=args.gaussian_schur, leastSquares=not args.gaussian_pseudo_inverse
+        ds.train, schur=args.gaussian_schur, leastSquares=not args.gaussian_pseudo_inverse
     )
     # basic
     imputator(ZeroImputator())
