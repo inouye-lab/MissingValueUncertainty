@@ -12,6 +12,7 @@ def handleException(excType: Type[BaseException], excValue: BaseException, excTr
                     message: str = "Uncaught Exception") -> None:
     """Function passed to python internals to handle exceptions by the logger"""
     if issubclass(excType, KeyboardInterrupt):
+        logging.critical("Received keyboard interrupt, experiment results may be incomplete or missing.")
         sys.__excepthook__(excType, excValue, excTraceback)
     else:
         logging.critical(message, exc_info=(excType, excValue, excTraceback))
