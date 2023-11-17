@@ -1,0 +1,1 @@
+{"name": "delta_ailerons", "path": "./datasets/binary/delta_ailerons.pklz", "output": "./models/nn/", "seed": 1337, "verbose": 1, "learning_rate": 0.0001, "training_iterations": 1000, "batch_size": 10, "validate_every": 10, "patience": 2, "input": null, "layers": [8, 4]}
