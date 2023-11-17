@@ -64,14 +64,7 @@ if __name__ == '__main__':
 
     # score the model
     regressor = RidgeRegressor(model)
-
-    def evaluate(dataset: Dataset, split: str):
-        predicted = regressor.predict(dataset.features)
-        mse = torch.mean((predicted - dataset.targets) ** 2)
-        logging.info(f"MSE for {split}: {mse}")
-    evaluate(ds.train, "train")
-    evaluate(ds.validate, "validation")
-    evaluate(ds.test, "test")
+    regressor.evaluateSplits(ds)
 
     # save the model
     # wrapping in RidgeRegressor makes it more convenient to load later

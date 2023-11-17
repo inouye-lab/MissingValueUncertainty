@@ -1,11 +1,14 @@
+import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
+import torch
 from overrides import override
 from sklearn.linear_model import Ridge
 from torch import Tensor
 from torch.nn import Module
 
+from .dataset import DatasetSplits, Dataset
 from .serializer import SerializerMixin
 
 
@@ -28,6 +31,25 @@ class Regressor(SerializerMixin, ABC):
         if isinstance(data, Module):
             return NeuralNetworkRegressor(data)
         return data
+
+    def evaluateDataset(self, dataset: Dataset, name: str) -> None:
+        """
+        Evaluates the model on the given dataset and logs the final MSE
+        :param dataset:  Dataset to evaluate
+        :param name:     Name to print in the log
+        """
+        predicted = self.predict(dataset.features)
+        mse = torch.mean((predicted - dataset.targets) ** 2)
+        logging.info(f"MSE for {name}: {mse}")
+
+    def evaluateSplits(self, ds: DatasetSplits) -> None:
+        """
+        Evaluates the model on the given dataset splits and logs the final MSE
+        :param ds: Dataset splits to evaluate
+        """
+        self.evaluateDataset(ds.train, "train")
+        self.evaluateDataset(ds.validate, "validate")
+        self.evaluateDataset(ds.test, "test")
 
 
 class RidgeRegressor(Regressor):
@@ -53,5 +75,4 @@ class NeuralNetworkRegressor(Regressor):
 
     @override
     def predict(self, features: Tensor) -> Tensor:
-        # TODO: reshape?
         return self.nn(features)

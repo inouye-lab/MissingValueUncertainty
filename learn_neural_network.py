@@ -1,0 +1,170 @@
+import argparse
+import copy
+import logging
+import math
+import os
+from time import perf_counter
+from typing import List
+
+import torch
+from torch import Tensor
+from torch.nn import Module, MSELoss, Linear, ReLU, Sequential, Flatten
+from torch.optim import Adam
+from torch.utils.data import TensorDataset, DataLoader
+
+from mvu.dataset import DatasetSplits
+from mvu.logger import setupLogging
+from mvu.regressor import NeuralNetworkRegressor
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+
+    # Basic
+    parser.add_argument("name", type=str, help='Name of the dataset to parse')
+    parser.add_argument("path", type=str, default=None, help='Location of the dataset binary for processing')
+    parser.add_argument("--output", type=str, default="./models/nn/", help='Location to save final regressor')
+    parser.add_argument('--seed', type=int, default=1337, help='Seed for random permutations')
+    parser.add_argument('-v', '--verbose', type=int, nargs='?', default=1, help='Logging verbosity level')
+
+    # training
+    parser.add_argument('--learning_rate', type=float, default=0.0001, help='Learning rate for Adam')
+    parser.add_argument('--training_iterations', type=int, default=200,
+                        help='Maximum training iterations, may train for less if the model stops improving')
+    parser.add_argument('--batch_size', type=int, default=10, help='Batch size during training')
+    parser.add_argument('--validate_every', type=int, default=10,
+                        help='How often to validate the model during training iteration')
+    parser.add_argument('--patience', type=int, default=2,
+                        help='Number of times validation can get worse before stopping training')
+
+    # model parameters
+    parser.add_argument("--input", type=str, default=None, help='Input model to continue training')
+    parser.add_argument("--layers", type=int, nargs='*', default=[],
+                        help="Sizes of each linear layer in the model")
+    # TODO: other layer types?
+
+    args = parser.parse_args()
+
+    # start logging
+    outputFolder = args.output
+    date = setupLogging(args.verbose, os.path.join(outputFolder, "log"), args.name, args=args)
+    logging.info(f"Starting to train {args.name}")
+
+    # load in dataset
+    path = args.path
+    if path is None:
+        path = f"./datasets/binary/{args.name}.pklz"
+    logging.info(f"Loading dataset from {path}")
+    ds = DatasetSplits.load(path)
+
+    # seed random parameters
+    torch.manual_seed(args.seed)  # TODO: anymore work for seeds?
+
+    # construct model
+    logging.info("Constructing neural network")
+    model: Module
+    if args.input is not None:
+        logging.info(f"Loading existing model from {args.input}")
+        savedNetwork = NeuralNetworkRegressor.load(args.input)
+        model = savedNetwork.nn
+    else:
+        lastSize = ds.train.numInputs
+        logging.info(f"Constructing model with input size {lastSize} and hidden layers {args.layers}")
+        components: List[Module] = []
+        for layer in args.layers:
+            components.append(Linear(lastSize, layer))
+            components.append(ReLU())
+            lastSize = layer
+        components.append(Linear(lastSize, 1))
+        components.append(Flatten(start_dim=0))
+        model = Sequential(*components)
+    logging.info(f"Network has {model.parameters()} parameters")
+
+    # other setup
+    lossFunction = MSELoss()
+    optimizer = Adam(model.parameters(), lr=args.learning_rate)
+
+    # evaluate the initial model
+    errorHistory: List[float] = []
+    model.eval()
+    trainingAccuracy = float(lossFunction(model(ds.train.features).squeeze(), ds.train.targets))
+    logging.info(f"Initial training error: {trainingAccuracy}")
+    errorHistory.append(trainingAccuracy)
+
+    # setup data loading
+    torchDataset = TensorDataset(ds.train.features, ds.train.targets)
+    dataLoader = DataLoader(torchDataset, batch_size=args.batch_size, shuffle=True)
+
+    # start training
+    logging.info("Starting network learning")
+    startTime = perf_counter()
+    validationBest = math.inf
+    bestParams = copy.deepcopy(model.state_dict())
+    validationFails = 0
+
+    for i in range(args.training_iterations):
+        iterationStart = perf_counter()
+        model.train()
+
+        # standard training stuff
+        totalLoss = 0
+        for batchIndex, (features, targets) in enumerate(dataLoader):
+            optimizer.zero_grad()
+
+            prediction = model(features)
+            loss: Tensor = lossFunction(prediction, targets)
+            loss.backward()
+            optimizer.step()
+
+            totalLoss += loss.item()
+
+        logging.info(f"{args.name} iteration {i + 1}/{args.training_iterations} in "
+                     f"{perf_counter() - iterationStart:.5f} seconds - error: {totalLoss / len(dataLoader)}")
+
+        # if this is the new best model, store it
+        if i % args.validate_every == 0:
+            logging.info(f"Evaluating the model via validation data")
+            model.eval()
+
+            validationError = float(lossFunction(model(ds.train.features), ds.train.targets))
+            if validationError >= validationBest:
+                logging.info(f"Worsening on valid: {validationError} > prev best {validationBest}")
+                if validationFails >= args.patience:
+                    logging.info(f"Exceeding patience {args.patience}, stopping training")
+                    break
+                else:
+                    validationFails += 1
+            else:
+                logging.info(f'Found new best model with error {validationError}')
+                bestParams = copy.deepcopy(model.state_dict())
+                validationBest = validationError
+                validationFails = 0
+
+    # restore best model
+    endTime = perf_counter()
+    logging.info(f"Network learning done in {endTime - startTime:.5f} secs")
+    model.load_state_dict(bestParams)
+
+    # TODO: error history graph?
+    """
+    # save training performances
+    perf_path = os.path.join(hist_dir, f'{str(percent * 100)}.train-hist')
+    np.save(perf_path, train_history)
+    logging.info(f'Training history saved to {perf_path}')
+
+    #
+    # and plot it
+    perf_path = os.path.join(hist_dir, f'{str(percent * 100)}.train-hist.pdf')
+    plt.plot(np.arange(len(train_history)), train_history)
+    plt.savefig(perf_path)
+    plt.close()
+    """
+
+    # save the model
+    regressor = NeuralNetworkRegressor(model)
+    regressor.evaluateSplits(ds)
+
+    # save the model
+    # wrapping in RidgeRegressor makes it more convenient to load later
+    outputPath = os.path.join(outputFolder, f"{args.name}-{date}.pklz")
+    logging.info(f"Saving model to {outputPath}")
+    regressor.save(outputPath)
