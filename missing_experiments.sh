@@ -4,16 +4,22 @@ conda activate ./venv
 
 experiment() {
   local name="$1"
-  local date="$2"
+  local regressor="$2"
+  local date="$3"
   echo
   echo
   echo "Running $name"
   python missing_experiments.py $name --dataset "./datasets/binary/$name.pklz" \
-    --regressor "./models/ridge/$name-$date.pklz" --output ./results/ridge/ \
+    --regressor "./models/$regressor/$name-$date.pklz" --output "./results/$regressor/" \
     --missing 0 0.25 0.5 0.75 1.0 --mc_samples 10 100 1000 --seed 1337
 }
 
-experiment abalone "20231109-003846"
-experiment delta_ailerons "20231109-003849"
-experiment elevators "20231109-003851"
-experiment insurance "20231109-003853"
+#experiment abalone ridge "20231109-003846"
+#experiment delta_ailerons ridge "20231109-003849"
+#experiment insurance ridge "20231109-003853"
+#experiment elevators ridge "20231109-003851"
+
+experiment abalone nn "20231116-220802"
+experiment delta_ailerons nn "20231116-221117"
+experiment insurance nn "20231116-221525"
+experiment elevators nn "20231116-221149"
