@@ -3,7 +3,7 @@ import csv
 import logging
 import os
 from time import perf_counter
-from typing import List, Optional
+from typing import List, Optional, TextIO
 
 import torch
 from torch import Generator, Tensor
@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 
 from mvu.dataset import DatasetSplits
 from mvu.distribution import ConditionalGaussianDistribution, Distribution, MarginalGaussianDistribution
-from mvu.experiment import Experiment, appendExperiments
+from mvu.experiment import Experiment, appendDatasetAsBatchExperiments
 from mvu.imputator import ZeroImputator, ConstantImputator, Imputator, MiceImputator
 from mvu.logger import setupLogging
 from mvu.method import Method, BasicCombinationMethod, EmpiricalUncertaintyByCount, EmpiricalUncertaintyByFeature, \
@@ -28,6 +28,8 @@ if __name__ == '__main__':
     parser.add_argument("--dataset", type=str, default=None, help='Path to processed dataset to load')
     parser.add_argument("--regressor", type=str, help='Path to the pretrained regressor to load')
     parser.add_argument("--output", type=str, default="./results/", help='Location to save result CSV')
+    parser.add_argument("--write_all_results", action='store_true',
+                        help="If set, writes a CSV with results from all samples.")
 
     # experiment parameters
     parser.add_argument("--threads", type=int, default=-1, help='Number of worker threads to run')
@@ -59,6 +61,8 @@ if __name__ == '__main__':
                         help="Number of samples to use in a batch for empirical methods")
     parser.add_argument("--gaussian_batch", type=int, default=100,
                         help="Number of samples to use in a batch for computing the gaussian covariance")
+    parser.add_argument("--method_batch", type=int, default=100,
+                        help="Number of samples to use in a method batch")
 
     # general properties
     parser.add_argument('--seed', type=int, default=1337,
@@ -162,14 +166,18 @@ if __name__ == '__main__':
     experiments: List[Experiment] = []
 
     # missing percentage experiments
+    # TODO: change batch size based on method, probably want smaller batches for MC gaussian or empirical
     for missing in args.missing:
         # all experiments use the same missing values
         missingName = f"{int(missing*100)}% missing"
         logging.info(f"Setting up experiments for {missingName}")
         missingTest = ds.test.dropCount(int(totalFeatures*missing), rand=rand)
-        appendExperiments(experiments, methods, missingTest, missingName, missing, residual, rand)
+        # TODO: switch to dataset wrapper that randomly removes data with a seed
+        appendDatasetAsBatchExperiments(experiments, methods, missingTest,missingName, missing, residual,
+                                        batchSize=args.method_batch, rand=rand, storeAllResults=args.write_all_results)
 
     # individual missing feature experiment
+    # TODO: switch to dataset wrapper that ignores a particular feature
     if args.feature_impact or args.inverted_feature_impact:
         # get group indices for dropping
         groups = ds.metadata.groups
@@ -183,7 +191,9 @@ if __name__ == '__main__':
                 logging.info(f"Setting up experiments for '{featureName}'")
 
                 missingTest = ds.test.dropSpecified(torch.eq(groups, index))
-                appendExperiments(experiments, methods, missingTest, featureName, None, residual, rand)
+                appendDatasetAsBatchExperiments(experiments, methods, missingTest, featureName, residual=residual,
+                                                batchSize=args.method_batch, rand=rand,
+                                                storeAllResults=args.write_all_results)
 
         if args.inverted_feature_impact:
             # create experiment for each feature
@@ -192,28 +202,34 @@ if __name__ == '__main__':
                 logging.info(f"Setting up experiments for '{featureName}'")
 
                 missingTest = ds.test.dropSpecified(torch.ne(groups, index))
-                appendExperiments(experiments, methods, missingTest, featureName, None, residual, rand)
+                appendDatasetAsBatchExperiments(experiments, methods, missingTest, featureName, residual=residual,
+                                                batchSize=args.method_batch, rand=rand,
+                                                storeAllResults=args.write_all_results)
 
     # if -1, give each experiment its own thread
     distributeTasks(experiments, args.threads)
-    successful = len([exp for exp in experiments if exp.completed])
+    successful = len([exp for exp in experiments if exp.processedSamples == 0])
     logging.info(f"Finished running {successful}/{len(experiments)} experiments")
 
     # save all experiment results to the relevant CSV files
     outputName = f"{args.name}-{date}"
     summaryPath = os.path.join(outputFolder, f"{outputName}-summary.csv")
     allPath = os.path.join(outputFolder, f"{outputName}-all.csv")
-    logging.info(f"Saving results to {summaryPath} and {allPath}")
+    logging.info(f"Saving results to {summaryPath}{f' and {allPath}' if args.write_all_results else ''}")
     with open(summaryPath, "w") as summaryFile:
-        with open(allPath, "w") as allFile:
-            # summary CSV has one row per experiment
-            summaryCsv = csv.writer(summaryFile)
-            # all CSV has one row per sample
+        # summary CSV has one row per experiment
+        summaryCsv = csv.writer(summaryFile)
+
+        # if requested, all CSV has one row per sample
+        allFile: Optional[TextIO] = None
+        allCsv = None
+        if args.write_all_results:
+            allFile = open(allPath, "w")
             allCsv = csv.writer(allFile)
 
-            # write headers
-            Experiment.writeResultHeaders(summaryCsv, allCsv)
-            # write rows
-            for experiment in experiments:
-                experiment.writeResults(summaryCsv, allCsv)
+        # write headers
+        Experiment.writeResultHeaders(summaryCsv, allCsv)
+        # write rows
+        for experiment in experiments:
+            experiment.writeResults(summaryCsv, allCsv)
     logging.info("Finished saving results")
