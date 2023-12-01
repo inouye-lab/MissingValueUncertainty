@@ -9,6 +9,7 @@ from torch import Tensor, Generator
 # from torch.distributions.multivariate_normal import MultivariateNormal
 
 from numpy import random
+from torch.utils.data import DataLoader
 
 from .dataset import INDEX_SAMPLE, INDEX_FEATURE, DatasetMeta, Dataset, validateFeatures
 from .imputator import containsMissing, Imputator
@@ -103,7 +104,7 @@ class MarginalGaussianDistribution(Imputator, Distribution):
     Temporary generator used during sample generation as we are unable to use the torch multivariate normal
     """
 
-    def __init__(self, datasetMeta: DatasetMeta, mean: Tensor, covariance: Tensor):
+    def __init__(self, datasetMeta: DatasetMeta, mean: Tensor, covariance: Tensor, *args, **kwargs):
         datasetMeta.validateFeatures(mean, isVector=True)
         assert covariance.shape[0] == covariance.shape[1] == datasetMeta.numInputs, \
             "Covariance matrix must be square and of input size"
@@ -126,6 +127,26 @@ class MarginalGaussianDistribution(Imputator, Distribution):
             torch.mean(dataset.features, dim=INDEX_SAMPLE),
             torch.cov(dataset.features.T), *args, **kwargs
         )
+
+    @classmethod
+    def fromDataloader(cls, metadata: DatasetMeta, data: DataLoader, *args, **kwargs):
+        # need the means to compute the covariances
+        numSamples = 0
+        means = torch.zeros((metadata.numInputs,))
+        for (features, targets) in data:
+            means += features.sum(axis=0)
+            numSamples += features.shape[0]
+        means /= numSamples
+
+        # unfortunately have to compute the covariance in a less optimal way as we must do it over a dataloader
+        covariance = torch.zeros((metadata.numInputs, metadata.numInputs))
+        for (features, targets) in data:
+            diffVector = features - means
+            covariance += torch.matmul(diffVector.T, diffVector)
+        covariance /= numSamples
+
+        # create the final distribution
+        return cls(metadata, means, covariance, *args, **kwargs)
 
     @classmethod
     def fromGaussian(cls, gaussian: "MarginalGaussianDistribution", *args, **kwargs):

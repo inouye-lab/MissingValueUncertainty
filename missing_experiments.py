@@ -51,6 +51,8 @@ if __name__ == '__main__':
                              'If unset, uses matrix multiplications respecting gaussian_pseudo_inverse')
     parser.add_argument("--empirical_batch", type=int, default=100,
                         help="Number of samples to use in a batch with empirical")
+    parser.add_argument("--gaussian_batch", type=int, default=100,
+                        help="Number of samples to use in a batch for computing the gaussian covariance")
 
     parser.add_argument('--seed', type=int, default=1337,
                         help='Seed for random permutations')
@@ -105,8 +107,11 @@ if __name__ == '__main__':
         for samples in args.mc_samples:
             method(MonteCarloMethod(regressor, distribution, samples))
 
-    gaussian = ConditionalGaussianDistribution.fromDataset(
-        ds.train, schur=args.gaussian_schur, leastSquares=not args.gaussian_pseudo_inverse
+    # learn gaussian distribution, TODO: consider saving this per dataset as it will take awhile for StarcraftImage
+    logging.info("Learning gaussian distribution")
+    gaussian = ConditionalGaussianDistribution.fromDataloader(
+        ds.metadata, DataLoader(ds.train.toTorch(), batch_size=args.gaussian_batch, shuffle=False),
+        schur=args.gaussian_schur, leastSquares=not args.gaussian_pseudo_inverse
     )
     # basic
     imputator(ZeroImputator())
@@ -119,6 +124,7 @@ if __name__ == '__main__':
     for iterations in args.mice_iterations:
         # some of the non-augmented MICE will fail, but the experiments are setup to handle that
         imputator(MiceImputator(ds.metadata, iterations))
+        # TODO: can we even do augmented mice with data loaders?
         imputator(MiceImputator(ds.metadata, iterations, ds.train.features, "Training Features"))
 
     # setup experiments list
