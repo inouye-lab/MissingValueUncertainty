@@ -7,6 +7,7 @@ from typing import List
 
 import torch
 from torch import Generator
+from torch.utils.data import DataLoader, TensorDataset
 
 from mvu.dataset import DatasetSplits
 from mvu.distribution import ConditionalGaussianDistribution, Distribution, MarginalGaussianDistribution
@@ -48,6 +49,8 @@ if __name__ == '__main__':
     parser.add_argument("--gaussian_schur", action='store_true',
                         help='If set, uses the schur complement to compute the gaussian covariance matrix.'
                              'If unset, uses matrix multiplications respecting gaussian_pseudo_inverse')
+    parser.add_argument("--empirical_batch", type=int, default=100,
+                        help="Number of samples to use in a batch with empirical")
 
     parser.add_argument('--seed', type=int, default=1337,
                         help='Seed for random permutations')
@@ -85,6 +88,9 @@ if __name__ == '__main__':
     rand = Generator()
     rand.manual_seed(args.seed)
 
+    # create data loader for empirical method
+    validationLoader = DataLoader(ds.validate.toTorch(), batch_size=args.empirical_batch, shuffle=False)
+
     def method(method: Method):
         """Adds an method"""
         methods.append(method)
@@ -92,8 +98,8 @@ if __name__ == '__main__':
     def imputator(imputator: Imputator):
         """Adds all three basic imputation methods"""
         method(BasicCombinationMethod(regressor, imputator))
-        method(EmpiricalUncertaintyByCount(regressor, imputator, ds.validate, residual))
-        method(EmpiricalUncertaintyByFeature(regressor, imputator, ds.validate, residual))
+        method(EmpiricalUncertaintyByCount(regressor, imputator, ds.metadata, validationLoader, residual))
+        method(EmpiricalUncertaintyByFeature(regressor, imputator, ds.metadata, validationLoader, residual))
 
     def monteCarlo(distribution: Distribution):
         for samples in args.mc_samples:

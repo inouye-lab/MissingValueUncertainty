@@ -5,6 +5,7 @@ from typing import List, Optional
 import pandas as pd
 import torch
 from torch import Tensor, Generator
+from torch.utils.data import TensorDataset
 
 from .serializer import SerializerMixin
 
@@ -227,8 +228,6 @@ class DatasetMeta(object):
             return os.path.commonprefix(self.labels[slice(first, first+count)]).rstrip()
 
 
-
-
 class Dataset(object):
     """Object representing a single dataset of features and targets. Provides guarantee the feature count matches"""
 
@@ -318,6 +317,10 @@ class Dataset(object):
             dataset = dataset.clone(cloneTargets=False)  # not changing targets
         dataset.metadata.dropSpecified(dataset.features, featuresToDrop, False)
         return dataset
+
+    def toTorch(self) -> TensorDataset:
+        """Converts this dataset into a torch dataset."""
+        return TensorDataset(self.features, self.targets)
 
 
 class DatasetSplits(SerializerMixin):

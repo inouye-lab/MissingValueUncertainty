@@ -4,12 +4,12 @@ from typing import Tuple, TypeVar, Generic, Dict
 import torch
 from overrides import override
 from torch import Tensor, Generator
+from torch.utils.data import DataLoader, TensorDataset
 
-from .dataset import INDEX_SAMPLE, Dataset, INDEX_FEATURE
+from .dataset import INDEX_SAMPLE, Dataset, INDEX_FEATURE, DatasetMeta
 from .distribution import Distribution
 from .imputator import Imputator
 from .regressor import Regressor
-from .util import estimateResidual
 
 
 class Method(ABC):
@@ -73,20 +73,32 @@ C = TypeVar('C')
 class EmpiricalUncertaintyMethod(BasicCombinationMethod, ABC, Generic[C]):
     """Estimator that mutates a validation dataset to match the input missingness."""
 
-    dataset: Dataset
-    """Validation dataset that is mutated to estimate uncertainty"""
+    metadata: DatasetMeta
+    """Metadata from the dataset to remove features"""
+
+    data: DataLoader
+    """Validation dataset via data loader that is mutated to estimate uncertainty"""
 
     residual: Tensor
-    """Residual uncertainty to cancel out, we just want the change in uncertainy"""
+    """Residual uncertainty to cancel out as a tensor of size 1, we just want the change in uncertainly"""
 
     cache: Dict[C, float]
     """Cache of uncertainty for each cache key."""
 
-    def __init__(self, regressor: Regressor, imputator: Imputator, dataset: Dataset, residual: Tensor):
+    def __init__(self, regressor: Regressor, imputator: Imputator,
+                 metadata: DatasetMeta, data: DataLoader, residual: Tensor):
         super().__init__(regressor, imputator)
-        self.dataset = dataset
+        self.metadata = metadata
+        self.data = data
         self.residual = residual
         self.cache = dict()
+
+    @classmethod
+    def fromDataset(cls, regressor: Regressor, imputator: Imputator, dataset: Dataset, residual: Tensor
+                    ) -> "EmpiricalUncertaintyMethod":
+        """Creates an instance of this method using a dataset, with automatically set batch size."""
+        return cls(regressor, imputator, dataset.metadata,
+                   DataLoader(dataset.toTorch(), batch_size=100, shuffle=False), residual)
 
     @abstractmethod
     def name(self) -> str:
@@ -102,12 +114,13 @@ class EmpiricalUncertaintyMethod(BasicCombinationMethod, ABC, Generic[C]):
         pass
 
     @abstractmethod
-    def mutate(self, cacheKey: C, rand: Generator = None) -> Dataset:
+    def mutate(self, features: Tensor, cacheKey: C, rand: Generator = None) -> Tensor:
         """
         Mutates the dataset to look like the given tensor using the cache key.
+        :param features:  Features to mutate
         :param cacheKey:  Computed cache key from the vector sample
         :param rand:      Random state to allow randomized mutations
-        :return:  Mutated dataset, must be a copy of `self.dataset`.
+        :return:  Mutated tensor, must be a copy of `features`.
         """
         pass
 
@@ -125,14 +138,24 @@ class EmpiricalUncertaintyMethod(BasicCombinationMethod, ABC, Generic[C]):
             else:
                 # logging.info(f"Cache Miss for {i} from {cacheKey}")
                 # if it's a new combination, need to calculate then cache
-                mutated = self.mutate(cacheKey, rand)
-                residual = estimateResidual(
-                    self.regressor,
-                    self.imputator.impute(mutated.features, copy=False),
-                    mutated.targets
-                )
-                uncertainty[i] = residual
-                self.cache[cacheKey] = residual.item()
+                # calculate squared error over time to prevent bias from the specific samples
+                squaredError = Tensor([0])
+                seenSamples = 0
+
+                # simply process each batch one at a time, no need to do anything fancy with loaders
+                for (validateFeatures, validateTargets) in self.data:
+                    means = self.regressor.predict(
+                        self.imputator.impute(
+                            self.mutate(validateFeatures, cacheKey, rand),
+                            copy=False
+                        )
+                    )
+                    squaredError += ((means - validateTargets) ** 2).sum()
+                    seenSamples += validateTargets.shape[0]
+                assert seenSamples != 0, "No samples in empirical uncertainty method"
+                mse = squaredError / seenSamples
+                uncertainty[i] = mse
+                self.cache[cacheKey] = mse.item()
 
         return uncertainty - self.residual
 
@@ -147,11 +170,11 @@ class EmpiricalUncertaintyByCount(EmpiricalUncertaintyMethod[int]):
 
     @override
     def cacheKey(self, vector: Tensor) -> int:
-        return self.dataset.metadata.countDistinctFeatures(torch.isnan(vector))
+        return self.metadata.countDistinctFeatures(torch.isnan(vector))
 
     @override
-    def mutate(self, cacheKey: int, rand: Generator = None) -> Dataset:
-        return self.dataset.dropCount(cacheKey, rand=rand)
+    def mutate(self, features: Tensor, cacheKey: int, rand: Generator = None) -> Tensor:
+        return self.metadata.dropCount(features, cacheKey, rand=rand)
 
 
 class EmpiricalUncertaintyByFeature(EmpiricalUncertaintyMethod[Tuple[bool]]):
@@ -170,8 +193,8 @@ class EmpiricalUncertaintyByFeature(EmpiricalUncertaintyMethod[Tuple[bool]]):
         return tuple(torch.isnan(vector).tolist())
 
     @override
-    def mutate(self, cacheKey: Tuple[bool], rand: Generator = None) -> Dataset:
-        return self.dataset.dropSpecified(torch.tensor(cacheKey))
+    def mutate(self, features: Tensor, cacheKey: Tuple[bool], rand: Generator = None) -> Tensor:
+        return self.metadata.dropSpecified(features, torch.tensor(cacheKey))
 
 
 class MonteCarloMethod(Method):

@@ -91,8 +91,7 @@ if __name__ == '__main__':
     errorHistory.append(trainingAccuracy)
 
     # setup data loading
-    torchDataset = TensorDataset(ds.train.features, ds.train.targets)
-    dataLoader = DataLoader(torchDataset, batch_size=args.batch_size, shuffle=True)
+    dataLoader = DataLoader(ds.train.toTorch(), batch_size=args.batch_size, shuffle=True)
 
     # start training
     logging.info("Starting network learning")
