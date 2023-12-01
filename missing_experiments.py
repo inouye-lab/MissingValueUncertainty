@@ -3,11 +3,11 @@ import csv
 import logging
 import os
 from time import perf_counter
-from typing import List
+from typing import List, Optional
 
 import torch
-from torch import Generator
-from torch.utils.data import DataLoader, TensorDataset
+from torch import Generator, Tensor
+from torch.utils.data import DataLoader
 
 from mvu.dataset import DatasetSplits
 from mvu.distribution import ConditionalGaussianDistribution, Distribution, MarginalGaussianDistribution
@@ -36,6 +36,8 @@ if __name__ == '__main__':
     parser.add_argument("--mice_iterations", type=int, nargs='*', default=[],
                         help="Number of mice iterations to run")
 
+
+    # experiment selection
     parser.add_argument("--missing", type=float, default=[], nargs='*',
                         help="Percent of data to treat as missing. If undefined, runs no missing percent experiments")
     parser.add_argument("--feature_impact", action='store_true',
@@ -43,17 +45,22 @@ if __name__ == '__main__':
     parser.add_argument("--inverted_feature_impact", action='store_true',
                         help='If set, runs the feature impact experiments by making each feature only present.')
 
+    # method configuration
     parser.add_argument("--gaussian_pseudo_inverse", action='store_true',
                         help='If set, uses the pseudo-inverse for multiplications for the gaussian methods.'
                              'If unset, uses the least squares approach.')
     parser.add_argument("--gaussian_schur", action='store_true',
                         help='If set, uses the schur complement to compute the gaussian covariance matrix.'
                              'If unset, uses matrix multiplications respecting gaussian_pseudo_inverse')
-    parser.add_argument("--empirical_batch", type=int, default=100,
-                        help="Number of samples to use in a batch with empirical")
+    # batch sizes
+    parser.add_argument("--residual_batch", type=int, default=None,
+                        help="Number of samples to use in a batch for computing the residual uncertainty")
+    parser.add_argument("--empirical_batch", type=int, default=None,
+                        help="Number of samples to use in a batch for empirical methods")
     parser.add_argument("--gaussian_batch", type=int, default=100,
                         help="Number of samples to use in a batch for computing the gaussian covariance")
 
+    # general properties
     parser.add_argument('--seed', type=int, default=1337,
                         help='Seed for random permutations')
     parser.add_argument('-v', '--verbose', type=int, nargs='?', default=1, help='Logging verbosity level')
@@ -80,10 +87,15 @@ if __name__ == '__main__':
     ds = DatasetSplits.load(datasetPath)
 
     # compute residual, it is just a function of regressor and dataset so only need one
-    startTime = perf_counter()
-    residual = estimateResidual(regressor, ds.validate)
-    endTime = perf_counter()
-    logging.info(f"Computed residual uncertainty of {residual}. Took {endTime - startTime}")
+    validationTorch = ds.validate.toTorch()
+    residual = Tensor([0])
+    if args.residual_batch is not None:
+        startTime = perf_counter()
+        residual = estimateResidual(regressor, DataLoader(validationTorch, shuffle=False, batch_size=args.residual_batch))
+        endTime = perf_counter()
+        logging.info(f"Computed residual uncertainty of {residual}. Took {endTime - startTime}")
+    else:
+        logging.info(f"Skipping computing residual, set residual_batch to use residual.")
 
     # setup experiments
     methods: List[Method] = []
@@ -91,8 +103,22 @@ if __name__ == '__main__':
     rand.manual_seed(args.seed)
 
     # create data loader for empirical method
-    validationLoader = DataLoader(ds.validate.toTorch(), batch_size=args.empirical_batch, shuffle=False)
+    empiricalLoader: Optional[DataLoader] = None
+    if args.empirical_batch is not None:
+        empiricalLoader = DataLoader(validationTorch, shuffle=False, batch_size=args.empirical_batch)
 
+    # learn gaussian distribution, TODO: consider saving this per dataset as it will take awhile for StarcraftImage
+    # TODO: should this be optional?
+    logging.info("Learning gaussian distribution")
+    startTime = perf_counter()
+    gaussian = ConditionalGaussianDistribution.fromDataloader(
+        ds.metadata, DataLoader(ds.train.toTorch(), batch_size=args.gaussian_batch, shuffle=False),
+        schur=args.gaussian_schur, leastSquares=not args.gaussian_pseudo_inverse
+    )
+    endTime = perf_counter()
+    logging.info(f"Learned gaussian distribution in {endTime - startTime} seconds")
+
+    # add methods
     def method(method: Method):
         """Adds an method"""
         methods.append(method)
@@ -100,19 +126,15 @@ if __name__ == '__main__':
     def imputator(imputator: Imputator):
         """Adds all three basic imputation methods"""
         method(BasicCombinationMethod(regressor, imputator))
-        method(EmpiricalUncertaintyByCount(regressor, imputator, ds.metadata, validationLoader, residual))
-        method(EmpiricalUncertaintyByFeature(regressor, imputator, ds.metadata, validationLoader, residual))
+        # add empirical if requested
+        if empiricalLoader is not None:
+            method(EmpiricalUncertaintyByCount(regressor, imputator, ds.metadata, empiricalLoader, residual))
+            method(EmpiricalUncertaintyByFeature(regressor, imputator, ds.metadata, empiricalLoader, residual))
 
     def monteCarlo(distribution: Distribution):
         for samples in args.mc_samples:
             method(MonteCarloMethod(regressor, distribution, samples))
 
-    # learn gaussian distribution, TODO: consider saving this per dataset as it will take awhile for StarcraftImage
-    logging.info("Learning gaussian distribution")
-    gaussian = ConditionalGaussianDistribution.fromDataloader(
-        ds.metadata, DataLoader(ds.train.toTorch(), batch_size=args.gaussian_batch, shuffle=False),
-        schur=args.gaussian_schur, leastSquares=not args.gaussian_pseudo_inverse
-    )
     # basic
     imputator(ZeroImputator())
     imputator(ConstantImputator(ds.metadata.normalizeFeatures(gaussian.mean), "Mean"))

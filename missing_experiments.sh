@@ -11,7 +11,8 @@ experiment() {
   echo "Running $name"
   python missing_experiments.py $name --dataset "./datasets/binary/$name.pklz" \
     --regressor "./models/$regressor/$name-$date.pklz" --output "./results/$regressor/" \
-    --missing 0 0.25 0.5 0.75 1.0 --mc_samples 10 100 1000 --seed 1337
+    --missing 0 0.25 0.5 0.75 1.0 --mc_samples 10 100 1000 --seed 1337 \
+    --residual_batch 100 --empirical_batch 100
 }
 
 #experiment abalone ridge "20231109-003846"

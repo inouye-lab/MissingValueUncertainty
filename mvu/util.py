@@ -1,29 +1,29 @@
-from typing import Tuple, Union
-
 import torch
 from torch import Tensor
 from torch.distributions import Normal
+from torch.utils.data import DataLoader
 
-from .dataset import Dataset
 from .regressor import Regressor
 
 
-def estimateResidual(regressor: Regressor, features: Union[Tensor, Dataset], targets: Tensor = None) -> Tensor:
+def estimateResidual(regressor: Regressor, data: DataLoader) -> Tensor:
     """
-    Estimates the residual uncertainty for the given regressor and features tensor
+    Estimates the residual uncertainty for the given regressor and data loader
     :param regressor: Regressor instance
-    :param features:  Feature tensor of size `(samples, features)` with no missingness
-    :param targets:   Targets for each sample, size `(samples,)`
+    :param data:      Data loader providing tuples of `(features, targets)` of sizes `(samples, features)`
+                      and `(samples,)`, with no missingness
     :return: Residual uncertainty for the whole model as a tensor of size 1
     """
-    # allow passing a dataset as the second parameter instead of splitting it
-    if targets is None:
-        targets = features.targets
-        features = features.features
+    squaredError = Tensor([0])
+    seenSamples = 0
 
-    # make prediction, then return mean squared error
-    prediction = regressor.predict(features)
-    return torch.mean((targets - prediction) ** 2)
+    # simply process each batch one at a time, no need to do anything fancy with loaders
+    for (features, targets) in data:
+        means = regressor.predict(features)
+        squaredError += ((means - targets) ** 2).sum()
+        seenSamples += targets.shape[0]
+    assert seenSamples != 0, "No samples in empirical uncertainty method"
+    return squaredError / seenSamples
 
 
 def gaussianLogLikelihood(squaredError: Tensor, var: Tensor) -> Tensor:
