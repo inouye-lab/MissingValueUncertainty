@@ -137,9 +137,13 @@ class Experiment:
 
         # approach 1: data loader, run experiment in batches
         if self.data is not None:
-            for i, (features, targets) in enumerate(self.data):
-                time = self._runBatch(features, targets, f" batch {i+1}")
-                logging.debug(f"Batch {i+1} for {self.experimentName} done in {time} seconds")
+            try:
+                for i, (features, targets) in enumerate(self.data):
+                    time = self._runBatch(features, targets, f" batch {i+1}")
+                    logging.debug(f"Batch {i+1} for {self.experimentName} done in {time} seconds")
+            except BaseException as e:
+                handleException(type(e), e, e.__traceback__,
+                                message=f"Failed to process {self.experimentName} due to dataloader exception")
         elif self.dataset is not None:
             self._runBatch(self.dataset.features, self.dataset.targets)
 
@@ -177,6 +181,9 @@ class Experiment:
         """
         # write missingPercent if not None, else write missing
         missing = self.missingPercent if self.missingPercent is not None else self.missingName
+        if self.processedSamples == 0:
+            logging.error(f"Skipping including {self.experimentName} in result CSV as 0/{self.totalSamples} samples "
+                          "were processed.")
 
         # start by writing the summary row
         avgMissingVariance = self.missingVariance / self.processedSamples
