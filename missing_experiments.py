@@ -11,11 +11,12 @@ from torch.utils.data import DataLoader
 
 from mvu.dataset import DatasetSplits
 from mvu.distribution import ConditionalGaussianDistribution, Distribution, MarginalGaussianDistribution
-from mvu.experiment import Experiment, appendDatasetAsBatchExperiments
+from mvu.experiment import Experiment, appendExperiments
 from mvu.imputator import ZeroImputator, ConstantImputator, Imputator, MiceImputator
 from mvu.logger import setupLogging
 from mvu.method import Method, BasicCombinationMethod, EmpiricalUncertaintyByCount, EmpiricalUncertaintyByFeature, \
     MonteCarloMethod
+from mvu.mutators import SpecificFeatureRemovingDataset, FeatureCountRemovingDataset
 from mvu.regressor import Regressor
 from mvu.util import estimateResidual
 from mvu.threading import distributeTasks
@@ -166,18 +167,26 @@ if __name__ == '__main__':
     experiments: List[Experiment] = []
 
     # missing percentage experiments
-    # TODO: change batch size based on method, probably want smaller batches for MC gaussian or empirical
+    testTorch = ds.test.toTorch()
     for missing in args.missing:
         # all experiments use the same missing values
         missingName = f"{int(missing*100)}% missing"
         logging.info(f"Setting up experiments for {missingName}")
-        missingTest = ds.test.dropCount(int(totalFeatures*missing), rand=rand)
-        # TODO: switch to dataset wrapper that randomly removes data with a seed
-        appendDatasetAsBatchExperiments(experiments, methods, missingTest,missingName, missing, residual,
-                                        batchSize=args.method_batch, rand=rand, storeAllResults=args.write_all_results)
+        numToDrop = int(totalFeatures*missing)
+
+        # generate two seeds, one for the data loader (since we calculate missing features on the fly and want them
+        # consistent across experiments) and one for the experiments (to ensure any random results are consistent
+        # regardless of thread count)
+        seeds = torch.randint(0, 0x7fffffff, (2,), generator=rand)  # max is just 32-bit signed int max
+        for method in methods:
+            dropFeatures = DataLoader(FeatureCountRemovingDataset(
+                testTorch, ds.metadata, numToDrop, torch.Generator().manual_seed(seeds[0].item())
+            ))
+            experiments.append(Experiment(method, ds.metadata.name, missingName, missing, residual, data=dropFeatures,
+                                          rand=torch.Generator().manual_seed(seeds[1].item()),
+                                          storeAllResults=args.write_all_results))
 
     # individual missing feature experiment
-    # TODO: switch to dataset wrapper that ignores a particular feature
     if args.feature_impact or args.inverted_feature_impact:
         # get group indices for dropping
         groups = ds.metadata.groups
@@ -190,10 +199,11 @@ if __name__ == '__main__':
                 featureName = ds.metadata.featureName(index)
                 logging.info(f"Setting up experiments for '{featureName}'")
 
-                missingTest = ds.test.dropSpecified(torch.eq(groups, index))
-                appendDatasetAsBatchExperiments(experiments, methods, missingTest, featureName, residual=residual,
-                                                batchSize=args.method_batch, rand=rand,
-                                                storeAllResults=args.write_all_results)
+                # missingTest = ds.test.dropSpecified(torch.eq(groups, index))
+                dropFeature = DataLoader(SpecificFeatureRemovingDataset(testTorch, torch.eq(groups, index)),
+                                         batch_size=args.method_batch, shuffle=False)
+                appendExperiments(experiments, methods, ds.metadata.name, featureName,
+                                  residual=residual, rand=rand, storeAllResults=args.write_all_results)
 
         if args.inverted_feature_impact:
             # create experiment for each feature
@@ -201,10 +211,11 @@ if __name__ == '__main__':
                 featureName = "not " + ds.metadata.featureName(index)
                 logging.info(f"Setting up experiments for '{featureName}'")
 
-                missingTest = ds.test.dropSpecified(torch.ne(groups, index))
-                appendDatasetAsBatchExperiments(experiments, methods, missingTest, featureName, residual=residual,
-                                                batchSize=args.method_batch, rand=rand,
-                                                storeAllResults=args.write_all_results)
+                # missingTest = ds.test.dropSpecified(torch.ne(groups, index))
+                dropFeature = DataLoader(SpecificFeatureRemovingDataset(testTorch, torch.ne(groups, index)),
+                                         batch_size=args.method_batch, shuffle=False)
+                appendExperiments(experiments, methods, ds.metadata.name, featureName,
+                                  residual=residual, rand=rand, storeAllResults=args.write_all_results)
 
     # if -1, give each experiment its own thread
     distributeTasks(experiments, args.threads)

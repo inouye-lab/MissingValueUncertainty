@@ -105,7 +105,7 @@ class DatasetMeta(object):
                 self._numGroups = torch.max(self.groups).item() + 1
         return self._numGroups
 
-    def _sampleDropIndexes(self, numToDrop: int, rand: Generator) -> Tensor:
+    def sampleDropIndexes(self, numToDrop: int, rand: Generator) -> Tensor:
         """
         Samples a boolean Tensor same size as the features of features to drop
         :param numToDrop:   Number of features to drop
@@ -142,9 +142,9 @@ class DatasetMeta(object):
             features = features.clone()
         if bySample:
             for i in range(features.shape[INDEX_SAMPLE]):
-                features[i, self._sampleDropIndexes(numToDrop, rand)] = torch.nan
+                features[i, self.sampleDropIndexes(numToDrop, rand)] = torch.nan
         else:
-            features[:, self._sampleDropIndexes(numToDrop, rand)] = torch.nan
+            features[:, self.sampleDropIndexes(numToDrop, rand)] = torch.nan
         return features
 
     def dropSpecified(self, features: Tensor, featuresToDrop: Tensor, copy: bool = True):
