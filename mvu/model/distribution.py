@@ -113,23 +113,30 @@ class GaussianParameters(SerializerMixin):
         )
 
     @classmethod
-    def fromDataloader(cls, numInputs: int, data: DataLoader):
+    def fromDataloader(cls, numInputs: int, data: DataLoader, showProgress: bool = False):
         """Creates an instance from a data loader (requires processing samples in batches)"""
         # need the means to compute the covariances
         numSamples = 0
         means = torch.zeros((numInputs,))
-        for (features, targets) in data:
+        batches = len(data)
+        for i, (features, targets) in enumerate(data):
+            if showProgress:
+                print(f"Computing mean batch {i+1:10}/{batches}", end="\r")
             means += features.sum(axis=0)
             numSamples += features.shape[0]
         means /= numSamples
+        logging.info(f"Computed gaussian mean")
 
         # unfortunately have to compute the covariance in a less optimal way as we must do it over a dataloader
         # TODO: reconsider method of features*features/n - mean*mean, but using outer product method (matmul did inner)
         covariance = torch.zeros((numInputs, numInputs))
-        for (features, targets) in data:
+        for i, (features, targets) in enumerate(data):
+            if showProgress:
+                print(f"Computing covariance batch {i+1:10}/{batches}", end="\r")
             diffVector = features - means
             covariance += torch.matmul(diffVector.T, diffVector)
         covariance /= numSamples
+        logging.info(f"Computed gaussian covariance")
 
         # create the final distribution
         return cls(means, covariance)

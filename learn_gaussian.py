@@ -31,7 +31,7 @@ if __name__ == '__main__':
     logging.info("Learning gaussian distribution")
     startTime = perf_counter()
     gaussian = GaussianParameters.fromDataloader(
-        ds.metadata.numInputs, DataLoader(ds.train, batch_size=args.batch_size, shuffle=False),
+        ds.metadata.numInputs, DataLoader(ds.train, batch_size=args.batch_size, shuffle=False), showProgress=True
     )
     endTime = perf_counter()
     logging.info(f"Finished learning gaussian after {endTime - startTime} seconds")
