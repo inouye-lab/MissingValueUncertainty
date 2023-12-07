@@ -6,17 +6,6 @@ from mvu.dataset.specialized.starcraft import createStarCraftDataset
 from mvu.dataset.torch import TorchDatasetSplits
 
 
-def validateArgs(args: Optional[Union[Dict, str]]) -> Dict:
-    """Ensures the arguments are a dictionary to make calling later methods easier"""
-    if args is None:
-        return dict()
-    if isinstance(args, str):
-        return {"path": args}
-    if isinstance(args, dict):
-        return args
-    raise ValueError(f"Invalid argument type {type(args)}")
-
-
 def getDatasetSplits(name: str, path: str = None, **kwargs) -> TorchDatasetSplits:
     """
     Base method for loading datasets

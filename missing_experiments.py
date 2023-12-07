@@ -10,7 +10,7 @@ import torch
 from torch import Generator, Tensor
 from torch.utils.data import DataLoader
 
-from mvu.dataset.loader import getDatasetSplits, validateArgs
+from mvu.dataset.loader import getDatasetSplits
 from mvu.model.distribution import ConditionalGaussianDistribution, Distribution, MarginalGaussianDistribution, \
     GaussianParameters
 from mvu.experiment import Experiment, appendExperiments
@@ -28,7 +28,7 @@ if __name__ == '__main__':
 
     # Basic
     parser.add_argument("name", type=str, help='Name of the dataset to parse')
-    parser.add_argument("--dataset", type=json.loads, default=None, help='Path to processed dataset to load')
+    parser.add_argument("--dataset", type=json.loads, default=dict(), help='Path to processed dataset to load')
     parser.add_argument("--regressor", type=str, help='Path to the pretrained regressor to load')
     parser.add_argument("--output", type=str, default="./results/", help='Location to save result CSV')
     parser.add_argument("--write_all_results", action='store_true',
@@ -40,7 +40,6 @@ if __name__ == '__main__':
                         help="Number of Monte Carlo samples to take")
     parser.add_argument("--mice_iterations", type=int, nargs='*', default=[],
                         help="Number of mice iterations to run")
-
 
     # experiment selection
     parser.add_argument("--missing", type=float, default=[], nargs='*',

@@ -13,7 +13,7 @@ from torch.nn import Module, MSELoss, Linear, ReLU, Sequential, Flatten
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 
-from mvu.dataset.loader import getDatasetSplits, validateArgs
+from mvu.dataset.loader import getDatasetSplits
 from mvu.logger import setupLogging
 from mvu.model.regressor import NeuralNetworkRegressor
 
@@ -22,7 +22,7 @@ if __name__ == '__main__':
 
     # Basic
     parser.add_argument("name", type=str, help='Name of the dataset to parse')
-    parser.add_argument("dataset", type=json.loads, default=None, help='Parameters to load the dataset')
+    parser.add_argument("dataset", type=json.loads, default=dict(), help='Parameters to load the dataset')
     parser.add_argument("--output", type=str, default="./models/nn/", help='Location to save final regressor')
     parser.add_argument('--seed', type=int, default=1337, help='Seed for random permutations')
     parser.add_argument('-v', '--verbose', type=int, nargs='?', default=1, help='Logging verbosity level')
@@ -51,7 +51,7 @@ if __name__ == '__main__':
     logging.info(f"Starting to train {args.name}")
 
     # load in dataset
-    ds = getDatasetSplits(args.name, **validateArgs(args.dataset))
+    ds = getDatasetSplits(args.name, **args.dataset)
 
     # seed random parameters
     torch.manual_seed(args.seed)  # TODO: anymore work for seeds?

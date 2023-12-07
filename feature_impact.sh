@@ -9,12 +9,10 @@ experiment() {
   echo
   echo
   echo "Running $name"
-  python missing_experiments.py $name --dataset "./datasets/binary/$name.pklz" \
-    --regressor "./models/$regressor/$name-$date.pklz" --output "./results/${regressor}_feature_impact/" \
-    --feature_impact --mc_samples 10 100 1000 --seed 1337
-  python missing_experiments.py $name --dataset "./datasets/binary/$name.pklz" \
-    --regressor "./models/$regressor/$name-$date.pklz" --output "./results/${regressor}_inverted_feature_impact/" \
-    --inverted_feature_impact --mc_samples 10 100 1000 --seed 1337
+  python missing_experiments.py $name --regressor "./models/$regressor/$name-$date.pklz" \
+    --output "./results/${regressor}_feature_impact/" --feature_impact --mc_samples 10 100 1000 --seed 1337
+  python missing_experiments.py $name --regressor "./models/$regressor/$name-$date.pklz" \
+    --output "./results/${regressor}_inverted_feature_impact/" --inverted_feature_impact --mc_samples 10 100 1000 --seed 1337
 }
 
 #experiment abalone ridge "20231109-003846"

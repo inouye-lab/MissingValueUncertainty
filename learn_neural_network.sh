@@ -8,7 +8,7 @@ learn() {
   echo
   echo
   echo "Learning $name"
-  python learn_neural_network.py $name "./datasets/binary/$name.pklz" --output ./models/nn/ --seed 1337 "$@"
+  python learn_neural_network.py $name --output ./models/nn/ --seed 1337 "$@"
 }
 
 # input size: 10

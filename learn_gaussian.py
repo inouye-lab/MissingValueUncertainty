@@ -6,14 +6,14 @@ from time import perf_counter
 
 from torch.utils.data import DataLoader
 
-from mvu.dataset.loader import getDatasetSplits, validateArgs
+from mvu.dataset.loader import getDatasetSplits
 from mvu.logger import setupLogging
-from mvu.model.distribution import MarginalGaussianDistribution, GaussianParameters
+from mvu.model.distribution import GaussianParameters
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("name", type=str, help='Name of the dataset to parse')
-    parser.add_argument("dataset", type=json.loads, default=None, help='Parameters to load the dataset')
+    parser.add_argument("dataset", type=json.loads, default=dict(), help='Parameters to load the dataset')
     parser.add_argument("--output", type=str, default="./datasets/gaussian/", help='Location to save the result')
     parser.add_argument("--batch_size", type=int, default=100,
                         help="Number of samples to use in a batch for computing the gaussian covariance")
@@ -25,7 +25,7 @@ if __name__ == '__main__':
     setupLogging(args.verbose, os.path.join(args.output, "log"), args.name)
 
     # load in dataset
-    ds = getDatasetSplits(args.name, **validateArgs(args.dataset))
+    ds = getDatasetSplits(args.name, **args.dataset)
 
     # Create gaussian
     logging.info("Learning gaussian distribution")
