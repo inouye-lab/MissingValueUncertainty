@@ -54,20 +54,20 @@ if __name__ == '__main__':
     if path is None:
         path = f"./datasets/binary/{args.name}.pklz"
     logging.info(f"Loading dataset from {path}")
-    ds = DatasetSplits.load(path)
+    # TODO: this line is the last holdout for importing the starcraft dataset here
+    ds = DatasetSplits.load(path).toTorch()
 
     # seed random parameters
     torch.manual_seed(args.seed)  # TODO: anymore work for seeds?
 
     # construct model
     logging.info("Constructing neural network")
-    model: Module
+    model: NeuralNetworkRegressor
     if args.input is not None:
         logging.info(f"Loading existing model from {args.input}")
-        savedNetwork = NeuralNetworkRegressor.load(args.input)
-        model = savedNetwork.nn
+        model = NeuralNetworkRegressor.load(args.input)
     else:
-        lastSize = ds.train.numInputs
+        lastSize = ds.metadata.numInputs
         logging.info(f"Constructing model with input size {lastSize} and hidden layers {args.layers}")
         components: List[Module] = []
         for layer in args.layers:
@@ -76,40 +76,42 @@ if __name__ == '__main__':
             lastSize = layer
         components.append(Linear(lastSize, 1))
         components.append(Flatten(start_dim=0))
-        model = Sequential(*components)
-    logging.info(f"Network has {model.parameters()} parameters")
+        model = NeuralNetworkRegressor(Sequential(*components))
+    logging.info(f"Network has {model.nn.parameters()} parameters")
 
     # other setup
     lossFunction = MSELoss()
-    optimizer = Adam(model.parameters(), lr=args.learning_rate)
+    optimizer = Adam(model.nn.parameters(), lr=args.learning_rate)
+
+    # setup data loading
+    dataLoader = DataLoader(ds.train, batch_size=args.batch_size, shuffle=True)
+    validateLoader = DataLoader(ds.validate, batch_size=args.batch_size, shuffle=False)  # TODO: different batch size?
+    testLoader = DataLoader(ds.test, batch_size=args.batch_size, shuffle=False)
 
     # evaluate the initial model
     errorHistory: List[float] = []
-    model.eval()
-    trainingAccuracy = float(lossFunction(model(ds.train.features).squeeze(), ds.train.targets))
+    model.nn.eval()
+    trainingAccuracy = model.evaluateDataloader(dataLoader)
     logging.info(f"Initial training error: {trainingAccuracy}")
     errorHistory.append(trainingAccuracy)
-
-    # setup data loading
-    dataLoader = DataLoader(ds.train.toTorch(), batch_size=args.batch_size, shuffle=True)
 
     # start training
     logging.info("Starting network learning")
     startTime = perf_counter()
     validationBest = math.inf
-    bestParams = copy.deepcopy(model.state_dict())
+    bestParams = copy.deepcopy(model.nn.state_dict())
     validationFails = 0
 
     for i in range(args.training_iterations):
         iterationStart = perf_counter()
-        model.train()
+        model.nn.train()
 
         # standard training stuff
         totalLoss = 0
         for batchIndex, (features, targets) in enumerate(dataLoader):
             optimizer.zero_grad()
 
-            prediction = model(features)
+            prediction = model.predict(features)
             loss: Tensor = lossFunction(prediction, targets)
             loss.backward()
             optimizer.step()
@@ -122,9 +124,9 @@ if __name__ == '__main__':
         # if this is the new best model, store it
         if i % args.validate_every == 0:
             logging.info(f"Evaluating the model via validation data")
-            model.eval()
+            model.nn.eval()
 
-            validationError = float(lossFunction(model(ds.train.features), ds.train.targets))
+            validationError = model.evaluateDataloader(validateLoader)
             if validationError >= validationBest:
                 logging.info(f"Worsening on valid: {validationError} > prev best {validationBest}")
                 if validationFails >= args.patience:
@@ -134,14 +136,14 @@ if __name__ == '__main__':
                     validationFails += 1
             else:
                 logging.info(f'Found new best model with error {validationError}')
-                bestParams = copy.deepcopy(model.state_dict())
+                bestParams = copy.deepcopy(model.nn.state_dict())
                 validationBest = validationError
                 validationFails = 0
 
     # restore best model
     endTime = perf_counter()
     logging.info(f"Network learning done in {endTime - startTime:.5f} secs")
-    model.load_state_dict(bestParams)
+    model.nn.load_state_dict(bestParams)
 
     # TODO: error history graph?
     """
@@ -159,11 +161,10 @@ if __name__ == '__main__':
     """
 
     # save the model
-    regressor = NeuralNetworkRegressor(model)
-    regressor.evaluateSplits(ds)
-
-    # save the model
     # wrapping in RidgeRegressor makes it more convenient to load later
     outputPath = os.path.join(outputFolder, f"{args.name}-{date}.pklz")
     logging.info(f"Saving model to {outputPath}")
-    regressor.save(outputPath)
+    model.save(outputPath)
+
+    # final evaluation of the model (done after saving as we don't need the result to save, and it might be slow)
+    model.evaluateDataLoaders(dataLoader, validateLoader, testLoader)

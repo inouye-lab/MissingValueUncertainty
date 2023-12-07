@@ -89,14 +89,14 @@ if __name__ == '__main__':
     if datasetPath is None:
         datasetPath = f"./datasets/binary/{args.name}.pklz"
     logging.info(f"Loading dataset from {args.regressor}")
-    ds = DatasetSplits.load(datasetPath)
+    # TODO: this line is the last holdout for importing the starcraft dataset here
+    ds = DatasetSplits.load(datasetPath).toTorch()
 
     # compute residual, it is just a function of regressor and dataset so only need one
-    validationTorch = ds.validate.toTorch()
     residual = Tensor([0])
     if args.residual_batch is not None:
         startTime = perf_counter()
-        residual = estimateResidual(regressor, DataLoader(validationTorch, shuffle=False, batch_size=args.residual_batch))
+        residual = estimateResidual(regressor, DataLoader(ds.validate, shuffle=False, batch_size=args.residual_batch))
         endTime = perf_counter()
         logging.info(f"Computed residual uncertainty of {residual}. Took {endTime - startTime}")
     else:
@@ -110,14 +110,14 @@ if __name__ == '__main__':
     # create data loader for empirical method
     empiricalLoader: Optional[DataLoader] = None
     if args.empirical_batch is not None:
-        empiricalLoader = DataLoader(validationTorch, shuffle=False, batch_size=args.empirical_batch)
+        empiricalLoader = DataLoader(ds.validate, shuffle=False, batch_size=args.empirical_batch)
 
     # learn gaussian distribution, TODO: consider saving this per dataset as it will take awhile for StarcraftImage
     # TODO: should this be optional?
     logging.info("Learning gaussian distribution")
     startTime = perf_counter()
     gaussian = ConditionalGaussianDistribution.fromDataloader(
-        ds.metadata, DataLoader(ds.train.toTorch(), batch_size=args.gaussian_batch, shuffle=False),
+        ds.metadata, DataLoader(ds.train, batch_size=args.gaussian_batch, shuffle=False),
         schur=args.gaussian_schur, leastSquares=not args.gaussian_pseudo_inverse
     )
     endTime = perf_counter()
@@ -152,7 +152,7 @@ if __name__ == '__main__':
         # some of the non-augmented MICE will fail, but the experiments are setup to handle that
         imputator(MiceImputator(ds.metadata, iterations))
         # TODO: can we even do augmented mice with data loaders?
-        imputator(MiceImputator(ds.metadata, iterations, ds.train.features, "Training Features"))
+        # imputator(MiceImputator(ds.metadata, iterations, ds.train.features, "Training Features"))
 
     # setup experiments list
     totalFeatures = ds.metadata.numGroups
@@ -167,7 +167,6 @@ if __name__ == '__main__':
     experiments: List[Experiment] = []
 
     # missing percentage experiments
-    testTorch = ds.test.toTorch()
     for missing in args.missing:
         # all experiments use the same missing values
         missingName = f"{int(missing*100)}% missing"
@@ -180,7 +179,7 @@ if __name__ == '__main__':
         seeds = torch.randint(0, 0x7fffffff, (2,), generator=rand)  # max is just 32-bit signed int max
         for method in methods:
             dropFeatures = DataLoader(FeatureCountRemovingDataset(
-                testTorch, ds.metadata, numToDrop, torch.Generator().manual_seed(seeds[0].item())
+                ds.test, ds.metadata, numToDrop, torch.Generator().manual_seed(seeds[0].item())
             ))
             experiments.append(Experiment(method, ds.metadata.name, missingName, missing, residual, data=dropFeatures,
                                           rand=torch.Generator().manual_seed(seeds[1].item()),
@@ -199,8 +198,7 @@ if __name__ == '__main__':
                 featureName = ds.metadata.featureName(index)
                 logging.info(f"Setting up experiments for '{featureName}'")
 
-                # missingTest = ds.test.dropSpecified(torch.eq(groups, index))
-                dropFeature = DataLoader(SpecificFeatureRemovingDataset(testTorch, torch.eq(groups, index)),
+                dropFeature = DataLoader(SpecificFeatureRemovingDataset(ds.test, torch.eq(groups, index)),
                                          batch_size=args.method_batch, shuffle=False)
                 appendExperiments(experiments, methods, ds.metadata.name, featureName,
                                   residual=residual, rand=rand, storeAllResults=args.write_all_results)
@@ -211,8 +209,7 @@ if __name__ == '__main__':
                 featureName = "not " + ds.metadata.featureName(index)
                 logging.info(f"Setting up experiments for '{featureName}'")
 
-                # missingTest = ds.test.dropSpecified(torch.ne(groups, index))
-                dropFeature = DataLoader(SpecificFeatureRemovingDataset(testTorch, torch.ne(groups, index)),
+                dropFeature = DataLoader(SpecificFeatureRemovingDataset(ds.test, torch.ne(groups, index)),
                                          batch_size=args.method_batch, shuffle=False)
                 appendExperiments(experiments, methods, ds.metadata.name, featureName,
                                   residual=residual, rand=rand, storeAllResults=args.write_all_results)

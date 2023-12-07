@@ -1,13 +1,11 @@
-import logging
-
 import torch
-from typing import TypeVar, Tuple, Optional
+from typing import TypeVar, Tuple
 
 from overrides import override
 from torch import Tensor, Generator
 from torch.utils.data import Dataset
 
-from mvu.dataset import DatasetMeta
+from mvu.dataset import DatasetMeta, TwoTensor
 
 T_co = TypeVar('T_co', covariant=True)
 
@@ -29,7 +27,7 @@ class DatasetWrapper(Dataset[T_co]):
         return len(self.base)
 
 
-class SpecificFeatureRemovingDataset(DatasetWrapper[Tuple[Tensor, ...]]):
+class SpecificFeatureRemovingDataset(DatasetWrapper[TwoTensor]):
     """
     Dataset that removes all features matching the passed tensor.
     Expects base to be a tensor dataset of `(features, targets)`.
@@ -38,7 +36,7 @@ class SpecificFeatureRemovingDataset(DatasetWrapper[Tuple[Tensor, ...]]):
     featuresToDrop: Tensor
     """Base dataset being wrapped"""
 
-    def __init__(self, base: Dataset[Tuple[Tensor, ...]], featuresToDrop: Tensor):
+    def __init__(self, base: Dataset[TwoTensor], featuresToDrop: Tensor):
         super().__init__(base)
         self.featuresToDrop = featuresToDrop
 
@@ -50,7 +48,7 @@ class SpecificFeatureRemovingDataset(DatasetWrapper[Tuple[Tensor, ...]]):
         return features, targets
 
 
-class FeatureCountRemovingDataset(DatasetWrapper[Tuple[Tensor, ...]]):
+class FeatureCountRemovingDataset(DatasetWrapper[TwoTensor]):
     """
     Dataset that removes the requested number of features from each sample.
     Expects base to be a tensor dataset of `(features, targets)`.
@@ -65,7 +63,7 @@ class FeatureCountRemovingDataset(DatasetWrapper[Tuple[Tensor, ...]]):
     rand: Generator
     """Generator to remove features."""
 
-    def __init__(self, base: Dataset[Tuple[Tensor, ...]], metadata: DatasetMeta, numToDrop: int,
+    def __init__(self, base: Dataset[TwoTensor], metadata: DatasetMeta, numToDrop: int,
                  rand: Generator = None):
         super().__init__(base)
         self.metadata = metadata

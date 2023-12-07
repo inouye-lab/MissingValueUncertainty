@@ -1,11 +1,11 @@
 import logging
 import os.path
-from typing import List, Optional
+from typing import List, Optional, Union, Tuple
 
 import pandas as pd
 import torch
 from torch import Tensor, Generator
-from torch.utils.data import TensorDataset
+from torch.utils.data import Dataset as TorchDataset, TensorDataset
 
 from .serializer import SerializerMixin
 
@@ -57,7 +57,7 @@ class DatasetMeta(object):
     _featureWeights: Optional[torch.Tensor]
     """Feature weights for random feature drops"""
 
-    def __init__(self, name, target, labels: List[str], groups: Optional[Tensor]):
+    def __init__(self, name: str, target: str, labels: List[str], groups: Optional[Tensor]):
         assert groups is None or len(groups) == len(labels), "Labels and groups must be the same size"
         self.name = name
         self.target = target
@@ -323,6 +323,36 @@ class Dataset(object):
         return TensorDataset(self.features, self.targets)
 
 
+TwoTensor = Union[Tuple[Tensor, ...], Tuple[Tensor, Tensor]]
+"""Represents the two different valid forms of a torch dataset"""
+
+TwoTensorDataset = Union[TorchDataset[Tuple[Tensor, ...]], TorchDataset[Tuple[Tensor, Tensor]]]
+"""Represents the two different valid forms of a torch dataset"""
+
+
+class TorchDatasetSplits:
+    """Object representing a train, validation, and testing split on a torch dataset"""
+
+    train: TwoTensorDataset
+    """Dataset used for learning the model"""
+
+    validate: TwoTensorDataset
+    """Dataset used for learning hyperparameters"""
+
+    test: TwoTensorDataset
+    """Dataset used for validating results"""
+
+    metadata: Optional[DatasetMeta]
+    """Metadata in the dataset"""
+
+    def __init__(self, train: TorchDataset[TwoTensor], validate: TorchDataset[TwoTensor], test: TorchDataset[TwoTensor],
+                 metadata: Optional[DatasetMeta] = None):
+        self.train = train
+        self.validate = validate
+        self.test = test
+        self.metadata = metadata
+
+
 class DatasetSplits(SerializerMixin):
     """Object representing a train, validation, and testing split"""
 
@@ -351,6 +381,10 @@ class DatasetSplits(SerializerMixin):
     def clone(self) -> "DatasetSplits":
         """Creates a copy of this dataset to allow modifying the tensors (e.g. for missingness)"""
         return DatasetSplits(self.train.clone(), self.validate.clone(), self.test.clone())
+
+    def toTorch(self) -> TorchDatasetSplits:
+        """Creates an object containing torch datasets, which is what we use primarily outside dataset creation"""
+        return TorchDatasetSplits(self.train.toTorch(), self.validate.toTorch(), self.test.toTorch(), self.metadata)
 
 
 def import_from_csv(name: str, csv: str, targetFeature: str,
