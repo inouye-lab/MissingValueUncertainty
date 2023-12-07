@@ -10,8 +10,9 @@ import torch
 from torch import Generator, Tensor
 from torch.utils.data import DataLoader
 
-from mvu.model.distribution import ConditionalGaussianDistribution, Distribution, MarginalGaussianDistribution
 from mvu.dataset.loader import getDatasetSplits, validateArgs
+from mvu.model.distribution import ConditionalGaussianDistribution, Distribution, MarginalGaussianDistribution, \
+    GaussianParameters
 from mvu.experiment import Experiment, appendExperiments
 from mvu.model.imputator import ZeroImputator, ConstantImputator, Imputator, MiceImputator
 from mvu.logger import setupLogging
@@ -50,19 +51,20 @@ if __name__ == '__main__':
                         help='If set, runs the feature impact experiments by making each feature only present.')
 
     # method configuration
+    parser.add_argument("--gaussian_path", type=str, default=None, help='Path to the pretrained gaussian to load')
     parser.add_argument("--gaussian_pseudo_inverse", action='store_true',
                         help='If set, uses the pseudo-inverse for multiplications for the gaussian methods.'
                              'If unset, uses the least squares approach.')
     parser.add_argument("--gaussian_schur", action='store_true',
                         help='If set, uses the schur complement to compute the gaussian covariance matrix.'
                              'If unset, uses matrix multiplications respecting gaussian_pseudo_inverse')
+    parser.add_argument("--gaussian_batch", type=int, default=100,
+                        help="Number of samples to use in a batch for computing the gaussian covariance")
     # batch sizes
     parser.add_argument("--residual_batch", type=int, default=None,
                         help="Number of samples to use in a batch for computing the residual uncertainty")
     parser.add_argument("--empirical_batch", type=int, default=None,
                         help="Number of samples to use in a batch for empirical methods")
-    parser.add_argument("--gaussian_batch", type=int, default=100,
-                        help="Number of samples to use in a batch for computing the gaussian covariance")
     parser.add_argument("--method_batch", type=int, default=100,
                         help="Number of samples to use in a method batch")
 
@@ -108,16 +110,20 @@ if __name__ == '__main__':
     if args.empirical_batch is not None:
         empiricalLoader = DataLoader(ds.validate, shuffle=False, batch_size=args.empirical_batch)
 
-    # learn gaussian distribution, TODO: consider saving this per dataset as it will take awhile for StarcraftImage
-    # TODO: should this be optional?
-    logging.info("Learning gaussian distribution")
-    startTime = perf_counter()
-    gaussian = ConditionalGaussianDistribution.fromDataloader(
-        ds.metadata, DataLoader(ds.train, batch_size=args.gaussian_batch, shuffle=False),
-        schur=args.gaussian_schur, leastSquares=not args.gaussian_pseudo_inverse
-    )
-    endTime = perf_counter()
-    logging.info(f"Learned gaussian distribution in {endTime - startTime} seconds")
+    # learn gaussian distribution
+    if args.gaussian_path is not None:
+        logging.info(f"Loading gaussian params from {args.gaussian_path}")
+        gaussianParams = GaussianParameters.load(args.gaussian_path)
+    else:
+        # TODO: should this be optional?
+        logging.info("Learning gaussian distribution")
+        startTime = perf_counter()
+        gaussianParams = GaussianParameters.fromDataloader(
+            ds.metadata.numInputs,
+            DataLoader(ds.train, batch_size=args.gaussian_batch, shuffle=False)
+        )
+        endTime = perf_counter()
+        logging.info(f"Learned gaussian distribution in {endTime - startTime} seconds")
 
     # add methods
     def method(method: Method):
@@ -136,13 +142,17 @@ if __name__ == '__main__':
         for samples in args.mc_samples:
             method(MonteCarloMethod(regressor, distribution, samples))
 
+    # will be using conditional gaussian in several places
+    condGaussian = ConditionalGaussianDistribution(
+        ds.metadata, gaussianParams, schur=args.gaussian_schur, leastSquares=not args.gaussian_pseudo_inverse
+    )
     # basic
     imputator(ZeroImputator())
-    imputator(ConstantImputator(ds.metadata.normalizeFeatures(gaussian.mean), "Mean"))
-    imputator(gaussian)  # Gaussian Conditional Mean Imputation
+    imputator(ConstantImputator(ds.metadata.normalizeFeatures(gaussianParams.mean), "Mean"))
+    imputator(condGaussian)  # Gaussian Conditional Mean Imputation
     # monte carlo
-    monteCarlo(MarginalGaussianDistribution.fromGaussian(gaussian))
-    monteCarlo(gaussian)
+    monteCarlo(MarginalGaussianDistribution(ds.metadata, gaussianParams))
+    monteCarlo(condGaussian)
     # mice
     for iterations in args.mice_iterations:
         # some of the non-augmented MICE will fail, but the experiments are setup to handle that

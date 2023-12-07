@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader
 from .imputator import containsMissing, Imputator
 from ..dataset.csv import CsvDataset
 from ..dataset.meta import validateFeatures, INDEX_SAMPLE, INDEX_FEATURE, DatasetMeta
+from ..serializer import SerializerMixin
 
 
 class Distribution(ABC):
@@ -87,16 +88,61 @@ class Distribution(ABC):
         return augmentedFeatures
 
 
+class GaussianParameters(SerializerMixin):
+    """Represents the learnable parameters of a gaussian distribution"""
+
+    mean: Tensor
+    """Mean vector of size `(features,)`"""
+    covariance: Tensor
+    """Covariance matrix of size `(features,features)`"""
+
+    def __init__(self, mean: Tensor, covariance: Tensor):
+        assert covariance.shape[0] == covariance.shape[1], "Covariance matrix must be square"
+        assert mean.shape[0] == covariance.shape[0], "Covariance matrix must have same number of features as mean"
+        self.mean = mean
+        self.covariance = covariance
+        if not torch.eq(covariance, covariance.T).all():
+            logging.warning("Covariance matrix is not symmetric")
+
+    @classmethod
+    def fromCsvDataset(cls, dataset: CsvDataset):
+        """Creates an instance from a CSV dataset (comes with full samples in a single tensor)"""
+        return cls(
+            torch.mean(dataset.features, dim=INDEX_SAMPLE),
+            torch.cov(dataset.features.T)
+        )
+
+    @classmethod
+    def fromDataloader(cls, numInputs: int, data: DataLoader):
+        """Creates an instance from a data loader (requires processing samples in batches)"""
+        # need the means to compute the covariances
+        numSamples = 0
+        means = torch.zeros((numInputs,))
+        for (features, targets) in data:
+            means += features.sum(axis=0)
+            numSamples += features.shape[0]
+        means /= numSamples
+
+        # unfortunately have to compute the covariance in a less optimal way as we must do it over a dataloader
+        # TODO: reconsider method of features*features/n - mean*mean, but using outer product method (matmul did inner)
+        covariance = torch.zeros((numInputs, numInputs))
+        for (features, targets) in data:
+            diffVector = features - means
+            covariance += torch.matmul(diffVector.T, diffVector)
+        covariance /= numSamples
+
+        # create the final distribution
+        return cls(means, covariance)
+
+
 class MarginalGaussianDistribution(Imputator, Distribution):
     """Distribution implementing a marginalized gaussian."""
 
     datasetMeta: DatasetMeta
     """Metadata of the dataset for normalization"""
 
-    mean: Tensor
-    """Mean vector of size `(features,)`"""
-    covariance: Tensor
-    """Covariance matrix of size `(features,features)`"""
+    params: GaussianParameters
+    """Distribution parameters"""
 
     _local: threading.local
     """
@@ -105,15 +151,10 @@ class MarginalGaussianDistribution(Imputator, Distribution):
     Temporary generator used during sample generation as we are unable to use the torch multivariate normal
     """
 
-    def __init__(self, datasetMeta: DatasetMeta, mean: Tensor, covariance: Tensor, *args, **kwargs):
-        datasetMeta.validateFeatures(mean, isVector=True)
-        assert covariance.shape[0] == covariance.shape[1] == datasetMeta.numInputs, \
-            "Covariance matrix must be square and of input size"
+    def __init__(self, datasetMeta: DatasetMeta, params: GaussianParameters):
+        datasetMeta.validateFeatures(params.mean, isVector=True)
         self.datasetMeta = datasetMeta
-        self.mean = mean
-        if not torch.eq(covariance, covariance.T).all():
-            logging.warning("Covariance matrix is not symmetric")
-        self.covariance = covariance
+        self.params = params
         self._local = threading.local()
 
     @property
@@ -121,45 +162,13 @@ class MarginalGaussianDistribution(Imputator, Distribution):
     def name(self) -> str:
         return "Marginal Gaussian"
 
-    @classmethod
-    def fromCsvDataset(cls, dataset: CsvDataset, *args, **kwargs):
-        """Creates an instance from a CSV dataset (comes with full samples in a single tensor)"""
-        return cls(
-            dataset.metadata,
-            torch.mean(dataset.features, dim=INDEX_SAMPLE),
-            torch.cov(dataset.features.T), *args, **kwargs
-        )
+    @property
+    def mean(self) -> Tensor:
+        return self.params.mean
 
-    @classmethod
-    def fromDataloader(cls, metadata: DatasetMeta, data: DataLoader, *args, **kwargs):
-        """Creates an instance from a data loader (requires processing samples in batches)"""
-        # need the means to compute the covariances
-        numSamples = 0
-        means = torch.zeros((metadata.numInputs,))
-        for (features, targets) in data:
-            means += features.sum(axis=0)
-            numSamples += features.shape[0]
-        means /= numSamples
-
-        # unfortunately have to compute the covariance in a less optimal way as we must do it over a dataloader
-        # TODO: reconsider method of features*features/n - mean*mean, but using outer product method (matmul did inner)
-        covariance = torch.zeros((metadata.numInputs, metadata.numInputs))
-        for (features, targets) in data:
-            diffVector = features - means
-            covariance += torch.matmul(diffVector.T, diffVector)
-        covariance /= numSamples
-
-        # create the final distribution
-        return cls(metadata, means, covariance, *args, **kwargs)
-
-    @classmethod
-    def fromGaussian(cls, gaussian: "MarginalGaussianDistribution", *args, **kwargs):
-        return cls(
-            gaussian.datasetMeta,
-            gaussian.mean,
-            gaussian.covariance,
-            *args, **kwargs
-        )
+    @property
+    def covariance(self) -> Tensor:
+        return self.params.covariance
 
     @override
     def _validateFeatures(self, features: Tensor) -> None:
@@ -263,21 +272,21 @@ class ConditionalGaussianDistribution(MarginalGaussianDistribution):
     Unused if `leastSquares` is True and not using `schur`.
     """
 
-    def __init__(self, datasetMeta: DatasetMeta, mean: Tensor, covariance: Tensor,
+    def __init__(self, datasetMeta: DatasetMeta, params: GaussianParameters,
                  schur: Union[Tensor, bool] = False, leastSquares: bool = True, hermitian: bool = True):
 
-        super().__init__(datasetMeta, mean, covariance)
+        super().__init__(datasetMeta, params)
         self.leastSquares = leastSquares
         self.hermitian = hermitian
 
         # if we are using schur, we want the inverted covariance matrix, faster to compute just once
         # noinspection PySimplifyBooleanCheck
         if schur == True:
-            self.covarianceInv = torch.linalg.pinv(covariance, hermitian=hermitian)
+            self.covarianceInv = torch.linalg.pinv(self.covariance, hermitian=hermitian)
         elif schur == False:
             self.covarianceInv = None
         else:
-            assert schur.shape == covariance.shape, "Covariance inverse matrix must be square and of input size"
+            assert schur.shape == self.covariance.shape, "Covariance inverse matrix must be square and of input size"
             self.covarianceInv = schur
 
     @property
