@@ -221,8 +221,10 @@ if __name__ == '__main__':
 
     # if -1, give each experiment its own thread
     distributeTasks(experiments, args.threads)
-    successful = len([exp for exp in experiments if exp.processedSamples == 0])
-    logging.info(f"Finished running {successful}/{len(experiments)} experiments")
+    finished = [exp for exp in experiments if exp.processedSamples > 0]
+    completed = len([exp for exp in finished if exp.processedSamples == exp.totalSamples])
+    logging.info(f"Finished running {len(finished)}/{len(experiments)} experiments, "
+                 f"with {completed}/{len(finished)} processing all samples.")
 
     # save all experiment results to the relevant CSV files
     outputName = f"{args.name}-{date}"
