@@ -1,5 +1,6 @@
 import argparse
 import csv
+import json
 import logging
 import os
 from time import perf_counter
@@ -9,8 +10,8 @@ import torch
 from torch import Generator, Tensor
 from torch.utils.data import DataLoader
 
-from mvu.dataset.csv import CsvDatasetSplits
 from mvu.model.distribution import ConditionalGaussianDistribution, Distribution, MarginalGaussianDistribution
+from mvu.dataset.loader import getDatasetSplits, validateArgs
 from mvu.experiment import Experiment, appendExperiments
 from mvu.model.imputator import ZeroImputator, ConstantImputator, Imputator, MiceImputator
 from mvu.logger import setupLogging
@@ -26,7 +27,7 @@ if __name__ == '__main__':
 
     # Basic
     parser.add_argument("name", type=str, help='Name of the dataset to parse')
-    parser.add_argument("--dataset", type=str, default=None, help='Path to processed dataset to load')
+    parser.add_argument("--dataset", type=json.loads, default=None, help='Path to processed dataset to load')
     parser.add_argument("--regressor", type=str, help='Path to the pretrained regressor to load')
     parser.add_argument("--output", type=str, default="./results/", help='Location to save result CSV')
     parser.add_argument("--write_all_results", action='store_true',
@@ -85,12 +86,7 @@ if __name__ == '__main__':
     regressor = Regressor.load(args.regressor)
 
     # load in dataset
-    datasetPath = args.dataset
-    if datasetPath is None:
-        datasetPath = f"./datasets/binary/{args.name}.pklz"
-    logging.info(f"Loading dataset from {args.regressor}")
-    # TODO: this line is the last holdout for importing the starcraft dataset here
-    ds = CsvDatasetSplits.load(datasetPath).toTorch()
+    ds = getDatasetSplits(args.name, **validateArgs(args.dataset))
 
     # compute residual, it is just a function of regressor and dataset so only need one
     residual = Tensor([0])

@@ -1,5 +1,6 @@
 import argparse
 import copy
+import json
 import logging
 import math
 import os
@@ -12,7 +13,7 @@ from torch.nn import Module, MSELoss, Linear, ReLU, Sequential, Flatten
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 
-from mvu.dataset.csv import CsvDatasetSplits
+from mvu.dataset.loader import getDatasetSplits, validateArgs
 from mvu.logger import setupLogging
 from mvu.model.regressor import NeuralNetworkRegressor
 
@@ -21,7 +22,7 @@ if __name__ == '__main__':
 
     # Basic
     parser.add_argument("name", type=str, help='Name of the dataset to parse')
-    parser.add_argument("path", type=str, default=None, help='Location of the dataset binary for processing')
+    parser.add_argument("dataset", type=json.loads, default=None, help='Parameters to load the dataset')
     parser.add_argument("--output", type=str, default="./models/nn/", help='Location to save final regressor')
     parser.add_argument('--seed', type=int, default=1337, help='Seed for random permutations')
     parser.add_argument('-v', '--verbose', type=int, nargs='?', default=1, help='Logging verbosity level')
@@ -50,12 +51,7 @@ if __name__ == '__main__':
     logging.info(f"Starting to train {args.name}")
 
     # load in dataset
-    path = args.path
-    if path is None:
-        path = f"./datasets/binary/{args.name}.pklz"
-    logging.info(f"Loading dataset from {path}")
-    # TODO: this line is the last holdout for importing the starcraft dataset here
-    ds = CsvDatasetSplits.load(path).toTorch()
+    ds = getDatasetSplits(args.name, **validateArgs(args.dataset))
 
     # seed random parameters
     torch.manual_seed(args.seed)  # TODO: anymore work for seeds?

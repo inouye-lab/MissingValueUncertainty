@@ -62,6 +62,7 @@ class DatasetMeta(object):
         self._numGroups = None
         self._featureWeights = None
 
+    @override
     def __str__(self):
         return (f"DatasetMeta{{name: '{self.name}', target: '{self.target}', labels: {str(self.labels)}, "
                 f"groups: {str(self.groups)}}}")
@@ -222,3 +223,74 @@ class DatasetMeta(object):
             return self.labels[first]
         else:
             return os.path.commonprefix(self.labels[slice(first, first+count)]).rstrip()
+
+
+def createImageLabels(imageSize: int, channels: int = 1) -> List[str]:
+    """
+    Creates the labels for an image dataset
+    :param imageSize:  Size of the image, expected to be a square
+    :param channels:   Third dimension of the image
+    :return: String label names for each feature
+    """
+    labels: List[str] = []
+    for c in range(channels):
+        for y in range(imageSize):
+            for x in range(imageSize):
+                labels.append(f"{c}({x},{y})")
+    return labels
+
+
+def createImageGroups(imageSize: int, sensorSize: int, channels: int) -> Optional[Tensor]:
+    """
+    Creates a group tensor for the image dataset
+    :param imageSize:    Size of the image, expected to be a square
+    :param sensorSize:   Size of each division of the image
+    :param channels:   Third dimension of the image
+    :return:  Tensor of image groups.
+    """
+    assert imageSize >= sensorSize, "Sensor size cannot be greater than image size"
+    # if each sensor is 1x1 pixels, no need to form groups, just return
+    if sensorSize == 1:
+        return None
+
+    # start by forming a tensor of all sensor indexes
+    sensorsPerAxis = math.ceil(imageSize / sensorSize)
+    groups = torch.arange(0, sensorsPerAxis**2).reshape(sensorsPerAxis, sensorsPerAxis)
+    # repeat the in indexes across X and Y dimensions
+    groups = groups.repeat_interleave(sensorSize, dim=0).repeat_interleave(sensorSize, dim=1)
+    # crop deals with the possibility of image not being evenly divisible into sensors
+    # the first reshape makes it easier to repeat across the channels dimension, last reshape makes it a vector
+    return groups[0:imageSize, 0:imageSize]\
+        .reshape(-1, imageSize, imageSize)\
+        .repeat_interleave(channels, dim=0)\
+        .reshape(channels*imageSize*imageSize)
+
+
+class ImageDatasetMeta(DatasetMeta):
+    """Metadata for a dataset with image inputs."""
+
+    imageSize: int
+    """Size of the image in pixels"""
+
+    sensorSize: int
+    """Size of the sensors on the image"""
+
+    channels: int
+    """Size of the sensors on the image"""
+
+    def __init__(self, name: str, target: str, imageSize: int, sensorSize: int, channels: int = 1):
+        super().__init__(name, target, createImageLabels(imageSize, channels), createImageGroups(imageSize, sensorSize, channels))
+        self.imageSize = imageSize
+        self.sensorSize = sensorSize
+        self.channels = channels
+
+    @override
+    def __str__(self):
+        return (f"ImageDatasetMeta{{name: '{self.name}', target: '{self.target}', imageSize: {self.imageSize}, "
+                f"sensorSize: {self.sensorSize}, channels: {self.channels}}}")
+
+    @override
+    def normalizeFeatures(self, features: Tensor, copy: bool = True) -> Tensor:
+        # images use groups as "sensors" but don't want the one hot behavior
+        # so just disable normalization entirely
+        return features
