@@ -7,7 +7,8 @@ import torch
 from sklearn.linear_model import Ridge
 from sklearn.model_selection import GridSearchCV
 
-from mvu.dataset import DatasetSplits, INDEX_SAMPLE, Dataset
+from mvu.dataset.csv import CsvDataset, CsvDatasetSplits
+from mvu.dataset.meta import INDEX_SAMPLE
 from mvu.logger import setupLogging
 from mvu.regressor import RidgeRegressor
 
@@ -40,7 +41,7 @@ if __name__ == '__main__':
     if path is None:
         path = f"./datasets/binary/{args.name}.pklz"
     logging.info(f"Loading dataset from {path}")
-    ds = DatasetSplits.load(path)
+    ds = CsvDatasetSplits.load(path)
 
     # construct model
     logging.info("Constructing ridge model")

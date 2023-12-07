@@ -6,7 +6,8 @@ from overrides import override
 from torch import Tensor, Generator
 from torch.utils.data import DataLoader, TensorDataset
 
-from .dataset import INDEX_SAMPLE, Dataset, INDEX_FEATURE, DatasetMeta
+from .dataset.csv import CsvDataset
+from .dataset.meta import INDEX_SAMPLE, INDEX_FEATURE, DatasetMeta
 from .distribution import Distribution
 from .imputator import Imputator
 from .regressor import Regressor
@@ -94,7 +95,7 @@ class EmpiricalUncertaintyMethod(BasicCombinationMethod, ABC, Generic[C]):
         self.cache = dict()
 
     @classmethod
-    def fromDataset(cls, regressor: Regressor, imputator: Imputator, dataset: Dataset, residual: Tensor
+    def fromDataset(cls, regressor: Regressor, imputator: Imputator, dataset: CsvDataset, residual: Tensor
                     ) -> "EmpiricalUncertaintyMethod":
         """Creates an instance of this method using a dataset, with automatically set batch size."""
         return cls(regressor, imputator, dataset.metadata,

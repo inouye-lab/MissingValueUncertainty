@@ -9,7 +9,7 @@ from torch import Tensor
 from torch.nn import Module
 from torch.utils.data import DataLoader
 
-from .dataset import DatasetSplits, Dataset
+from .dataset.csv import CsvDataset, CsvDatasetSplits
 from .serializer import SerializerMixin
 
 
@@ -33,7 +33,7 @@ class Regressor(SerializerMixin, ABC):
             return NeuralNetworkRegressor(data)
         return data
 
-    def evaluateDataset(self, dataset: Dataset) -> Tensor:
+    def evaluateDataset(self, dataset: CsvDataset) -> Tensor:
         """
         Evaluates the model on the given dataset and logs the final MSE
         :param dataset:  Dataset to evaluate
@@ -56,7 +56,7 @@ class Regressor(SerializerMixin, ABC):
             seenSamples += targets.shape[0]
         return float(squaredError / seenSamples)
 
-    def evaluateSplits(self, ds: DatasetSplits) -> None:
+    def evaluateSplits(self, ds: CsvDatasetSplits) -> None:
         """
         Evaluates the model on the given dataset splits and logs the final MSE
         :param ds: Dataset splits to evaluate

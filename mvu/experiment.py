@@ -6,7 +6,7 @@ import torch
 from torch import Tensor, Generator
 from torch.utils.data import DataLoader
 
-from .dataset import Dataset
+from .dataset.csv import CsvDataset
 from .logger import handleException
 from .method import Method
 from .util import gaussianLogLikelihood
@@ -41,7 +41,7 @@ class Experiment:
     Loader to fetch the data for the experiments. Either this or dataset must be set.
     It is expected when enumerating to get a tensor of `(features,targets)`
     """
-    dataset: Optional[Dataset]
+    dataset: Optional[CsvDataset]
     """Dataset for the current experiment. Either this or data must be set."""
 
     # Ongoing results
@@ -66,7 +66,7 @@ class Experiment:
 
     def __init__(self, method: Method, dataName: str,
                  missingName: str, missingPercent: float = None, residual: Tensor = Tensor([0]),
-                 data: DataLoader = None, dataset: Dataset = None,
+                 data: DataLoader = None, dataset: CsvDataset = None,
                  storeAllResults: bool = False, rand: Generator = None):
         assert data is not None or dataset is not None, "Must pass in either data or dataset"
         self.method = method
@@ -231,7 +231,7 @@ def appendExperiments(experiments: List[Experiment], methods: List[Method],
         experiments.append(Experiment(method, *args, rand=newRand, **kwargs))
 
 
-def appendDatasetAsBatchExperiments(experiments: List[Experiment], methods: List[Method], dataset: Dataset,
+def appendDatasetAsBatchExperiments(experiments: List[Experiment], methods: List[Method], dataset: CsvDataset,
                                     *args, batchSize: int = 1, **kwargs) -> None:
     """
     Appends an experiment for each method in a set. Additional arguments are passed on.

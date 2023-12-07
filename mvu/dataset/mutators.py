@@ -5,7 +5,8 @@ from overrides import override
 from torch import Tensor, Generator
 from torch.utils.data import Dataset
 
-from mvu.dataset import DatasetMeta, TwoTensor
+from mvu.dataset.torch import TwoTensor
+from mvu.dataset.meta import DatasetMeta
 
 T_co = TypeVar('T_co', covariant=True)
 

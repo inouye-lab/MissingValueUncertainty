@@ -12,7 +12,7 @@ from torch.nn import Module, MSELoss, Linear, ReLU, Sequential, Flatten
 from torch.optim import Adam
 from torch.utils.data import TensorDataset, DataLoader
 
-from mvu.dataset import DatasetSplits
+from mvu.dataset.csv import CsvDatasetSplits
 from mvu.logger import setupLogging
 from mvu.regressor import NeuralNetworkRegressor
 
@@ -55,7 +55,7 @@ if __name__ == '__main__':
         path = f"./datasets/binary/{args.name}.pklz"
     logging.info(f"Loading dataset from {path}")
     # TODO: this line is the last holdout for importing the starcraft dataset here
-    ds = DatasetSplits.load(path).toTorch()
+    ds = CsvDatasetSplits.load(path).toTorch()
 
     # seed random parameters
     torch.manual_seed(args.seed)  # TODO: anymore work for seeds?

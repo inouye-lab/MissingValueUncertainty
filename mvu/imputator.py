@@ -7,7 +7,7 @@ from pandas import DataFrame
 from statsmodels.imputation.mice import MICEData
 from torch import Tensor
 
-from .dataset import validateFeatures, DatasetMeta, INDEX_FEATURE, INDEX_SAMPLE
+from .dataset.meta import validateFeatures, INDEX_SAMPLE, INDEX_FEATURE, DatasetMeta
 
 
 def containsMissing(features: Tensor) -> bool:

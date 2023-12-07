@@ -11,7 +11,8 @@ from torch import Tensor, Generator
 from numpy import random
 from torch.utils.data import DataLoader
 
-from .dataset import INDEX_SAMPLE, INDEX_FEATURE, DatasetMeta, Dataset, validateFeatures
+from .dataset.csv import CsvDataset
+from .dataset.meta import validateFeatures, INDEX_SAMPLE, INDEX_FEATURE, DatasetMeta
 from .imputator import containsMissing, Imputator
 
 
@@ -121,7 +122,8 @@ class MarginalGaussianDistribution(Imputator, Distribution):
         return "Marginal Gaussian"
 
     @classmethod
-    def fromDataset(cls, dataset: Dataset, *args, **kwargs):
+    def fromCsvDataset(cls, dataset: CsvDataset, *args, **kwargs):
+        """Creates an instance from a CSV dataset (comes with full samples in a single tensor)"""
         return cls(
             dataset.metadata,
             torch.mean(dataset.features, dim=INDEX_SAMPLE),
@@ -130,6 +132,7 @@ class MarginalGaussianDistribution(Imputator, Distribution):
 
     @classmethod
     def fromDataloader(cls, metadata: DatasetMeta, data: DataLoader, *args, **kwargs):
+        """Creates an instance from a data loader (requires processing samples in batches)"""
         # need the means to compute the covariances
         numSamples = 0
         means = torch.zeros((metadata.numInputs,))

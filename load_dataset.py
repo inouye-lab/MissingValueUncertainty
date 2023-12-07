@@ -4,7 +4,7 @@ import os
 
 import torch
 
-from mvu.dataset import import_from_csv, split_dataset
+from mvu.dataset.csv import import_from_csv, split_dataset
 from mvu.logger import setupLogging, dumpArgs
 
 if __name__ == '__main__':

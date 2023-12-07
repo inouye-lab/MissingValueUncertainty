@@ -9,15 +9,15 @@ import torch
 from torch import Generator, Tensor
 from torch.utils.data import DataLoader
 
-from mvu.dataset import DatasetSplits
+from mvu.dataset.csv import CsvDatasetSplits
 from mvu.distribution import ConditionalGaussianDistribution, Distribution, MarginalGaussianDistribution
 from mvu.experiment import Experiment, appendExperiments
 from mvu.imputator import ZeroImputator, ConstantImputator, Imputator, MiceImputator
 from mvu.logger import setupLogging
 from mvu.method import Method, BasicCombinationMethod, EmpiricalUncertaintyByCount, EmpiricalUncertaintyByFeature, \
     MonteCarloMethod
-from mvu.mutators import SpecificFeatureRemovingDataset, FeatureCountRemovingDataset
 from mvu.regressor import Regressor
+from mvu.dataset.mutators import SpecificFeatureRemovingDataset, FeatureCountRemovingDataset
 from mvu.util import estimateResidual
 from mvu.threading import distributeTasks
 
@@ -90,7 +90,7 @@ if __name__ == '__main__':
         datasetPath = f"./datasets/binary/{args.name}.pklz"
     logging.info(f"Loading dataset from {args.regressor}")
     # TODO: this line is the last holdout for importing the starcraft dataset here
-    ds = DatasetSplits.load(datasetPath).toTorch()
+    ds = CsvDatasetSplits.load(datasetPath).toTorch()
 
     # compute residual, it is just a function of regressor and dataset so only need one
     residual = Tensor([0])
