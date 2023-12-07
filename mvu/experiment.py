@@ -209,7 +209,7 @@ class Experiment:
                 offset += len(batch[0])
         elif self.storeAllResults:
             logging.error(f"Experiment {self.experimentName} stored all results, but did not receive CSV to write them.")
-        elif allCsv is None:
+        elif allCsv is not None:
             logging.error(f"Experiment {self.experimentName} received CSV file for all results but did not store them.")
 
 
