@@ -3,14 +3,13 @@ import json
 import logging
 import os
 
-import torch
 from sklearn.linear_model import Ridge
 from sklearn.model_selection import GridSearchCV
 
-from mvu.dataset.csv import CsvDataset, CsvDatasetSplits
+from mvu.dataset.csv import CsvDatasetSplits
 from mvu.dataset.meta import INDEX_SAMPLE
 from mvu.logger import setupLogging
-from mvu.regressor import RidgeRegressor
+from mvu.model.regressor import RidgeRegressor
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

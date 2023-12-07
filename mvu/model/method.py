@@ -4,13 +4,13 @@ from typing import Tuple, TypeVar, Generic, Dict
 import torch
 from overrides import override
 from torch import Tensor, Generator
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader
 
-from .dataset.csv import CsvDataset
-from .dataset.meta import INDEX_SAMPLE, INDEX_FEATURE, DatasetMeta
 from .distribution import Distribution
 from .imputator import Imputator
 from .regressor import Regressor
+from ..dataset.csv import CsvDataset
+from ..dataset.meta import INDEX_SAMPLE, INDEX_FEATURE, DatasetMeta
 
 
 class Method(ABC):

@@ -11,9 +11,9 @@ from torch import Tensor, Generator
 from numpy import random
 from torch.utils.data import DataLoader
 
-from .dataset.csv import CsvDataset
-from .dataset.meta import validateFeatures, INDEX_SAMPLE, INDEX_FEATURE, DatasetMeta
 from .imputator import containsMissing, Imputator
+from ..dataset.csv import CsvDataset
+from ..dataset.meta import validateFeatures, INDEX_SAMPLE, INDEX_FEATURE, DatasetMeta
 
 
 class Distribution(ABC):
@@ -142,6 +142,7 @@ class MarginalGaussianDistribution(Imputator, Distribution):
         means /= numSamples
 
         # unfortunately have to compute the covariance in a less optimal way as we must do it over a dataloader
+        # TODO: reconsider method of features*features/n - mean*mean, but using outer product method (matmul did inner)
         covariance = torch.zeros((metadata.numInputs, metadata.numInputs))
         for (features, targets) in data:
             diffVector = features - means

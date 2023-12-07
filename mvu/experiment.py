@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 
 from .dataset.csv import CsvDataset
 from .logger import handleException
-from .method import Method
+from .model.method import Method
 from .util import gaussianLogLikelihood
 
 

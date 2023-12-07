@@ -10,14 +10,14 @@ from torch import Generator, Tensor
 from torch.utils.data import DataLoader
 
 from mvu.dataset.csv import CsvDatasetSplits
-from mvu.distribution import ConditionalGaussianDistribution, Distribution, MarginalGaussianDistribution
+from mvu.model.distribution import ConditionalGaussianDistribution, Distribution, MarginalGaussianDistribution
 from mvu.experiment import Experiment, appendExperiments
-from mvu.imputator import ZeroImputator, ConstantImputator, Imputator, MiceImputator
+from mvu.model.imputator import ZeroImputator, ConstantImputator, Imputator, MiceImputator
 from mvu.logger import setupLogging
-from mvu.method import Method, BasicCombinationMethod, EmpiricalUncertaintyByCount, EmpiricalUncertaintyByFeature, \
+from mvu.model.method import Method, BasicCombinationMethod, EmpiricalUncertaintyByCount, EmpiricalUncertaintyByFeature, \
     MonteCarloMethod
-from mvu.regressor import Regressor
 from mvu.dataset.mutators import SpecificFeatureRemovingDataset, FeatureCountRemovingDataset
+from mvu.model.regressor import Regressor
 from mvu.util import estimateResidual
 from mvu.threading import distributeTasks
 

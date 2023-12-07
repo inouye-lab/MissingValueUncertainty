@@ -3,7 +3,7 @@ from torch import Tensor
 from torch.distributions import Normal
 from torch.utils.data import DataLoader
 
-from .regressor import Regressor
+from .model.regressor import Regressor
 
 
 def estimateResidual(regressor: Regressor, data: DataLoader) -> Tensor:

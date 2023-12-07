@@ -10,11 +10,11 @@ import torch
 from torch import Tensor
 from torch.nn import Module, MSELoss, Linear, ReLU, Sequential, Flatten
 from torch.optim import Adam
-from torch.utils.data import TensorDataset, DataLoader
+from torch.utils.data import DataLoader
 
 from mvu.dataset.csv import CsvDatasetSplits
 from mvu.logger import setupLogging
-from mvu.regressor import NeuralNetworkRegressor
+from mvu.model.regressor import NeuralNetworkRegressor
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
