@@ -28,6 +28,7 @@ class StarCraftDataset(Dataset[Tuple[Tensor, Tensor]]):
     def __len__(self):
         return len(self.base)
 
+    @override
     def __getitem__(self, item) -> Tuple[Tensor, Tensor]:
         (unitIds, unitValues), data = self.base[item]
         # if no target is defined, just use 0. This just makes it simpler in contexts that are not regressing
@@ -36,7 +37,9 @@ class StarCraftDataset(Dataset[Tuple[Tensor, Tensor]]):
         else:
             target = data["metadata"][self.target]
         # expect vectors for the input instead of an image
-        return unitValues.reshape(-1), Tensor([target])
+        # we also convert to floats so we can actually place nan in the tensor for missingness
+        # TODO: should we be converting to a range of -1 to 1 instead of 0 to 1?
+        return (unitValues.float() / 255).reshape(-1), Tensor([target])
 
 
 def createStarCraftDataset(path: str = None, target: str = None,
