@@ -87,7 +87,7 @@ if __name__ == '__main__':
     regressor = Regressor.load(args.regressor)
 
     # load in dataset
-    ds = getDatasetSplits(args.name, **validateArgs(args.dataset))
+    ds = getDatasetSplits(args.name, **args.dataset)
 
     # compute residual, it is just a function of regressor and dataset so only need one
     residual = Tensor([0])
