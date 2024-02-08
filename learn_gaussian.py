@@ -22,7 +22,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # start logging
-    setupLogging(args.verbose, os.path.join(args.output, "log"), args.name)
+    setupLogging(args.verbose, os.path.join(args.output, "log"), args.name, args)
 
     # load in dataset
     ds = getDatasetSplits(args.name, **args.dataset)
