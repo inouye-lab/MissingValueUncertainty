@@ -292,5 +292,5 @@ class ImageDatasetMeta(DatasetMeta):
     @override
     def normalizeFeatures(self, features: Tensor, copy: bool = True) -> Tensor:
         # images use groups as "sensors" but don't want the one hot behavior
-        # so just disable normalization entirely
-        return features
+        # however, we do want clipping as pixel values should be between 0 and 1 intensity
+        return features.clip(min=0, max=1)
