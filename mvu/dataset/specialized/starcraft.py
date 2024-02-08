@@ -55,6 +55,8 @@ def createStarCraftDataset(path: str = None, target: str = None, validation_perc
     :return:  Dataset instance
     """
     assert path is not None, "Must pass in a path to use the starcraft dataset"
+    # insure the path exists, this is supposed to be done inside the starcraft logic but they don't create parents
+    Path(path).mkdir(exist_ok=True, parents=True)
 
     # create metadata using
     # TODO: can we reasonably support other image formats? for now hardcoding to 'bag-of-units-first'
