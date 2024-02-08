@@ -1,10 +1,11 @@
 import logging
+from pathlib import Path
 from typing import Tuple
 
 from overrides import override
 from sc2image import StarCraftImage
 from torch import Tensor
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Subset
 
 from mvu.dataset.meta import ImageDatasetMeta
 from mvu.dataset.torch import TorchDatasetSplits
@@ -42,14 +43,15 @@ class StarCraftDataset(Dataset[Tuple[Tensor, Tensor]]):
         return (unitValues.float() / 255).reshape(-1), Tensor([target])
 
 
-def createStarCraftDataset(path: str = None, target: str = None,
+def createStarCraftDataset(path: str = None, target: str = None, validation_percent: float = 0.3,
                            image_size: int = 64, sensor_size: int = 1) -> TorchDatasetSplits:
     """
     Creates the needed objects to use the starcraft dataset
-    :param path:         Location to load the starcraft dataset into
-    :param target:       Field from metadata to use as the regression target
-    :param image_size:   Size of the image in pixels
-    :param sensor_size:  Size of sensors for making values missing
+    :param path:                Location to load the starcraft dataset into
+    :param target:              Field from metadata to use as the regression target
+    :param validation_percent:  Percentage of training data to use for validation
+    :param image_size:          Size of the image in pixels
+    :param sensor_size:         Size of sensors for making values missing
     :return:  Dataset instance
     """
     assert path is not None, "Must pass in a path to use the starcraft dataset"
@@ -58,7 +60,14 @@ def createStarCraftDataset(path: str = None, target: str = None,
     # TODO: can we reasonably support other image formats? for now hardcoding to 'bag-of-units-first'
     imageFormat = 'bag-of-units-first'
     meta = ImageDatasetMeta("starcraft", target, image_size, sensor_size, 3)
-    training = StarCraftDataset(path, imageFormat, image_size, target, train=True)
+
+    # we only have train and test for starcraft, so split train into train and validation by percent
+    # TODO: consider supporting seeded randomizing the split indices? prevent bias due to ordering in the set
+    trainingValidation = StarCraftDataset(path, imageFormat, image_size, target, train=True)
+    trainingValidationSize = len(trainingValidation)
+    validationEnd = int(trainingValidationSize * validation_percent)
+    training = Subset(trainingValidation, range(validationEnd, trainingValidationSize))
+    validation = Subset(trainingValidation, range(0, validationEnd))
+
     testing = StarCraftDataset(path, imageFormat, image_size, target, train=False)
-    # TODO: validation data
-    return TorchDatasetSplits(training, training, testing, meta)
+    return TorchDatasetSplits(training, validation, testing, meta)
