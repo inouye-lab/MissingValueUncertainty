@@ -26,6 +26,8 @@ if __name__ == '__main__':
     parser.add_argument("--output", type=str, default="./models/nn/", help='Location to save final regressor')
     parser.add_argument('--seed', type=int, default=1337, help='Seed for random permutations')
     parser.add_argument('-v', '--verbose', type=int, nargs='?', default=1, help='Logging verbosity level')
+    parser.add_argument("--force_cpu", action='store_true',
+                        help="If set, forces using the CPU for calculations instead of the GPU.")
 
     # training
     parser.add_argument('--learning_rate', type=float, default=0.0001, help='Learning rate for Adam')
@@ -81,6 +83,11 @@ if __name__ == '__main__':
     lossFunction = MSELoss()
     optimizer = Adam(model.nn.parameters(), lr=args.learning_rate)
 
+    # device setup
+    device = torch.device("cuda" if not args.force_cpu and torch.cuda.is_available() else "cpu")
+    logging.info(f"Using {device} for tensor calculations, cuda available: {torch.cuda.is_available()}")
+    model.nn.to(device)
+
     # setup data loading
     dataLoader = DataLoader(ds.train, batch_size=args.batch_size, shuffle=True, generator=rand)
     # TODO: different batch size?
@@ -90,7 +97,7 @@ if __name__ == '__main__':
     # evaluate the initial model
     errorHistory: List[Tensor] = []
     model.nn.eval()
-    trainingAccuracy = model.evaluateDataloader(dataLoader)
+    trainingAccuracy = model.evaluateDataloader(dataLoader, device)
     logging.info(f"Initial training error: {trainingAccuracy}")
     errorHistory.append(trainingAccuracy)
 
@@ -109,6 +116,9 @@ if __name__ == '__main__':
         # standard training stuff
         totalLoss = 0
         for batchIndex, (features, targets) in enumerate(dataLoader):
+            features = features.to(device)
+            targets = targets.to(device)
+
             optimizer.zero_grad()
 
             prediction = model.predict(features)
@@ -128,7 +138,7 @@ if __name__ == '__main__':
             logging.info(f"Evaluating the model via validation data")
             model.nn.eval()
 
-            validationError = model.evaluateDataloader(validateLoader)
+            validationError = model.evaluateDataloader(validateLoader, device)
             if validationError >= validationBest:
                 logging.info(f"Worsening on valid: {validationError} > prev best {validationBest}")
                 if validationFails >= args.patience:
@@ -163,10 +173,14 @@ if __name__ == '__main__':
     """
 
     # save the model
-    # wrapping in RidgeRegressor makes it more convenient to load later
+    # start by resetting some properties, not sure if this is needed, but it feels safer before saving the model
+    model.nn.eval()
+    model.nn.cpu()
+    model.nn.zero_grad()
     outputPath = os.path.join(outputFolder, f"{args.name}-{date}.pklz")
     logging.info(f"Saving model to {outputPath}")
     model.save(outputPath)
 
     # final evaluation of the model (done after saving as we don't need the result to save, and it might be slow)
-    model.evaluateDataLoaders(dataLoader, validateLoader, testLoader)
+    model.nn.to(device)
+    model.evaluateDataLoaders(dataLoader, validateLoader, testLoader, device)

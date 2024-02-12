@@ -1,6 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Optional
 
 import torch
 from overrides import override
@@ -43,19 +43,23 @@ class Regressor(SerializerMixin, ABC):
         return torch.mean((predicted - dataset.targets) ** 2)
 
     @torch.no_grad()
-    def evaluateDataloader(self, data: DataLoader) -> Tensor:
+    def evaluateDataloader(self, data: DataLoader, device: torch.device = None) -> Tensor:
         """
         Evaluates the model on the given dataset and logs the final MSE
-        :param data:  Data to evaluate
+        :param data:   Data to evaluate
+        :param device: Device to use for computation
         :return:  Mean squared error for the dataset
         """
         squaredError: Optional[Tensor] = None
         seenSamples = 0
         totalBatches = len(data)
         for batchIndex, (features, targets) in enumerate(data):
+            if device is not None:
+                features = features.to(device)
+                targets = targets.to(device)
             # cannot do this outside the loop as we don't know the number of targets yet
             if squaredError is None:
-                squaredError = torch.zeros_like(targets)
+                squaredError = torch.zeros_like(targets, device=device)
             predicted = self.predict(features)
             squaredError += (predicted - targets) ** 2
             seenSamples += targets.shape[0]
@@ -63,7 +67,7 @@ class Regressor(SerializerMixin, ABC):
         else:
             # this only happens if we have no data
             squaredError = Tensor([0])
-        return squaredError / seenSamples
+        return (squaredError / seenSamples).cpu()
 
     def evaluateSplits(self, ds: CsvDatasetSplits) -> None:
         """
@@ -74,16 +78,18 @@ class Regressor(SerializerMixin, ABC):
         logging.info(f"MSE for validate: {self.evaluateDataset(ds.validate)}")
         logging.info(f"MSE for test: {self.evaluateDataset(ds.test)}")
 
-    def evaluateDataLoaders(self, train: DataLoader, validate: DataLoader, test: DataLoader) -> None:
+    def evaluateDataLoaders(self, train: DataLoader, validate: DataLoader, test: DataLoader, device: torch.device = None
+                            ) -> None:
         """
         Evaluates the model on the given dataset splits and logs the final MSE
-        :param train: Loader for training data
+        :param train:    Loader for training data
         :param validate: Loader for validation data
-        :param test: Loader for testing data
+        :param test:     Loader for testing data
+        :param device:   Device to use for computation
         """
-        logging.info(f"MSE for train: {self.evaluateDataloader(train)}")
-        logging.info(f"MSE for validate: {self.evaluateDataloader(validate)}")
-        logging.info(f"MSE for test: {self.evaluateDataloader(test)}")
+        logging.info(f"MSE for train: {self.evaluateDataloader(train, device)}")
+        logging.info(f"MSE for validate: {self.evaluateDataloader(validate, device)}")
+        logging.info(f"MSE for test: {self.evaluateDataloader(test, device)}")
 
 
 class RidgeRegressor(Regressor):
