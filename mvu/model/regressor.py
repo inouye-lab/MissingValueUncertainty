@@ -42,6 +42,7 @@ class Regressor(SerializerMixin, ABC):
         predicted = self.predict(dataset.features)
         return torch.mean((predicted - dataset.targets) ** 2)
 
+    @torch.no_grad()
     def evaluateDataloader(self, data: DataLoader) -> Tensor:
         """
         Evaluates the model on the given dataset and logs the final MSE
