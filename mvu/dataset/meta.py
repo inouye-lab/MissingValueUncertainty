@@ -1,6 +1,6 @@
 import math
 import os
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import torch
 from overrides import override
@@ -35,8 +35,8 @@ class DatasetMeta(object):
     name: str
     """Friendly readable name of the dataset"""
 
-    target: str
-    """Name of the target feature"""
+    target: Union[str, List[str]]
+    """Name of the target feature, or a list of target features in some datasets. Mainly used for debug"""
 
     labels: List[str]
     """List of labels for each feature index"""
@@ -53,7 +53,7 @@ class DatasetMeta(object):
     _featureWeights: Optional[torch.Tensor]
     """Feature weights for random feature drops"""
 
-    def __init__(self, name: str, target: str, labels: List[str], groups: Optional[Tensor]):
+    def __init__(self, name: str, target: Union[str, List[str]], labels: List[str], groups: Optional[Tensor]):
         assert groups is None or len(groups) == len(labels), "Labels and groups must be the same size"
         self.name = name
         self.target = target
@@ -278,7 +278,7 @@ class ImageDatasetMeta(DatasetMeta):
     channels: int
     """Size of the sensors on the image"""
 
-    def __init__(self, name: str, target: str, imageSize: int, sensorSize: int, channels: int = 1):
+    def __init__(self, name: str, target: List[str], imageSize: int, sensorSize: int, channels: int = 1):
         super().__init__(name, target, createImageLabels(imageSize, channels), createImageGroups(imageSize, sensorSize, channels))
         self.imageSize = imageSize
         self.sensorSize = sensorSize

@@ -85,7 +85,7 @@ if __name__ == '__main__':
     testLoader = DataLoader(ds.test, batch_size=args.batch_size, shuffle=False)
 
     # evaluate the initial model
-    errorHistory: List[float] = []
+    errorHistory: List[Tensor] = []
     model.nn.eval()
     trainingAccuracy = model.evaluateDataloader(dataLoader)
     logging.info(f"Initial training error: {trainingAccuracy}")

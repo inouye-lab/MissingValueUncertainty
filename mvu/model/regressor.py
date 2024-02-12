@@ -42,19 +42,25 @@ class Regressor(SerializerMixin, ABC):
         predicted = self.predict(dataset.features)
         return torch.mean((predicted - dataset.targets) ** 2)
 
-    def evaluateDataloader(self, data: DataLoader) -> float:
+    def evaluateDataloader(self, data: DataLoader) -> Tensor:
         """
         Evaluates the model on the given dataset and logs the final MSE
         :param data:  Data to evaluate
         :return:  Mean squared error for the dataset
         """
-        squaredError = Tensor([0])
+        squaredError: Optional[Tensor] = None
         seenSamples = 0
         for (features, targets) in data:
+            # cannot do this outside the loop as we don't know the number of targets yet
+            if squaredError is None:
+                squaredError = torch.zeros_like(targets)
             predicted = self.predict(features)
             squaredError += (predicted - targets) ** 2
             seenSamples += targets.shape[0]
-        return float(squaredError / seenSamples)
+        else:
+            # this only happens if we have no data
+            squaredError = Tensor([0])
+        return squaredError / seenSamples
 
     def evaluateSplits(self, ds: CsvDatasetSplits) -> None:
         """
@@ -100,4 +106,5 @@ class NeuralNetworkRegressor(Regressor):
 
     @override
     def predict(self, features: Tensor) -> Tensor:
+        # TODO: target index as we might have multiple targets
         return self.nn(features)
