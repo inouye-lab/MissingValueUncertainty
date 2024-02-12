@@ -101,6 +101,7 @@ if __name__ == '__main__':
     bestParams = copy.deepcopy(model.nn.state_dict())
     validationFails = 0
 
+    numBatches = len(dataLoader)
     for i in range(args.training_iterations):
         iterationStart = perf_counter()
         model.nn.train()
@@ -116,6 +117,8 @@ if __name__ == '__main__':
             optimizer.step()
 
             totalLoss += loss.item()
+            print(f"Evaluating iteration {i + 1}/{args.training_iterations} for batch {batchIndex + 1}/{numBatches}",
+                  end="\r")
 
         logging.info(f"{args.name} iteration {i + 1}/{args.training_iterations} in "
                      f"{perf_counter() - iterationStart:.5f} seconds - error: {totalLoss / len(dataLoader)}")

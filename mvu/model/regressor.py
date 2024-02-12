@@ -50,13 +50,15 @@ class Regressor(SerializerMixin, ABC):
         """
         squaredError: Optional[Tensor] = None
         seenSamples = 0
-        for (features, targets) in data:
+        totalBatches = len(data)
+        for batchIndex, (features, targets) in enumerate(data):
             # cannot do this outside the loop as we don't know the number of targets yet
             if squaredError is None:
                 squaredError = torch.zeros_like(targets)
             predicted = self.predict(features)
             squaredError += (predicted - targets) ** 2
             seenSamples += targets.shape[0]
+            print(f"Evaluating regressor batch {batchIndex + 1}/{totalBatches}", end="\r")
         else:
             # this only happens if we have no data
             squaredError = Tensor([0])
