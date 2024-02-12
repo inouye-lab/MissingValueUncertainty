@@ -8,7 +8,7 @@ from time import perf_counter
 from typing import List
 
 import torch
-from torch import Tensor
+from torch import Tensor, Generator
 from torch.nn import Module, MSELoss, Linear, ReLU, Sequential, Flatten
 from torch.optim import Adam
 from torch.utils.data import DataLoader
@@ -55,6 +55,8 @@ if __name__ == '__main__':
 
     # seed random parameters
     torch.manual_seed(args.seed)  # TODO: anymore work for seeds?
+    rand = Generator()
+    rand.manual_seed(args.seed)
 
     # construct model
     logging.info("Constructing neural network")
@@ -80,9 +82,10 @@ if __name__ == '__main__':
     optimizer = Adam(model.nn.parameters(), lr=args.learning_rate)
 
     # setup data loading
-    dataLoader = DataLoader(ds.train, batch_size=args.batch_size, shuffle=True)
-    validateLoader = DataLoader(ds.validate, batch_size=args.batch_size, shuffle=False)  # TODO: different batch size?
-    testLoader = DataLoader(ds.test, batch_size=args.batch_size, shuffle=False)
+    dataLoader = DataLoader(ds.train, batch_size=args.batch_size, shuffle=True, generator=rand)
+    # TODO: different batch size?
+    validateLoader = DataLoader(ds.validate, batch_size=args.batch_size, shuffle=False, generator=rand)
+    testLoader = DataLoader(ds.test, batch_size=args.batch_size, shuffle=False, generator=rand)
 
     # evaluate the initial model
     errorHistory: List[Tensor] = []
