@@ -14,8 +14,10 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 
 from mvu.dataset.loader import getDatasetSplits
+from mvu.dataset.meta import ImageDatasetMeta
 from mvu.logger import setupLogging
 from mvu.model.regressor import NeuralNetworkRegressor
+from mvu.model.specialized.image import ImageRegressor
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -41,6 +43,7 @@ if __name__ == '__main__':
 
     # model parameters
     parser.add_argument("--input", type=str, default=None, help='Input model to continue training')
+    parser.add_argument("--architecture", type=str, default=None, help='Neural network architecture to use')
     parser.add_argument("--layers", type=int, nargs='*', default=[],
                         help="Sizes of each linear layer in the model")
     # TODO: other layer types?
@@ -66,6 +69,18 @@ if __name__ == '__main__':
     if args.input is not None:
         logging.info(f"Loading existing model from {args.input}")
         model = NeuralNetworkRegressor.load(args.input)
+    elif args.architecture is not None:
+        if args.architecture == "image_regression":
+            if isinstance(ds.metadata, ImageDatasetMeta):
+                logging.info(f"Using Image Regressor architecture with {ds.metadata.channels} channels, "
+                             f"{ds.metadata.imageSize} image size and {len(ds.metadata.target)} outputs")
+                model = NeuralNetworkRegressor(
+                    ImageRegressor(ds.metadata.channels, ds.metadata.imageSize, len(ds.metadata.target))
+                )
+            else:
+                raise ValueError("image-regression requires the dataset metadata to also be image metadata")
+        else:
+            raise ValueError(f"Unknown neural network architecture {args.architecture}")
     else:
         lastSize = ds.metadata.numInputs
         logging.info(f"Constructing model with input size {lastSize} and hidden layers {args.layers}")
