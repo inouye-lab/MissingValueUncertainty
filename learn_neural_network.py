@@ -73,7 +73,7 @@ if __name__ == '__main__':
         components.append(Linear(lastSize, 1))
         components.append(Flatten(start_dim=0))
         model = NeuralNetworkRegressor(Sequential(*components))
-    logging.info(f"Network has {model.nn.parameters()} parameters")
+    logging.info(f"Network has {sum(p.numel() for p in model.nn.parameters() if p.requires_grad)} parameters")
 
     # other setup
     lossFunction = MSELoss()
