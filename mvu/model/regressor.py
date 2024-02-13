@@ -59,9 +59,9 @@ class Regressor(SerializerMixin, ABC):
                 targets = targets.to(device)
             # cannot do this outside the loop as we don't know the number of targets yet
             if squaredError is None:
-                squaredError = torch.zeros_like(targets, device=device)
+                squaredError = torch.zeros(size=(targets.shape[1],), device=device)
             predicted = self.predict(features)
-            squaredError += (predicted - targets) ** 2
+            squaredError += ((predicted - targets) ** 2).sum(axis=0)
             seenSamples += targets.shape[0]
             print(f"Evaluating regressor batch {batchIndex + 1}/{totalBatches}", end="\r")
         else:
