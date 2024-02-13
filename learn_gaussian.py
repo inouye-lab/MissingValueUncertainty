@@ -4,6 +4,7 @@ import logging
 import os
 from time import perf_counter
 
+import torch
 from torch.utils.data import DataLoader
 
 from mvu.dataset.loader import getDatasetSplits
@@ -18,6 +19,8 @@ if __name__ == '__main__':
     parser.add_argument("--batch_size", type=int, default=100,
                         help="Number of samples to use in a batch for computing the gaussian covariance")
     parser.add_argument('-v', '--verbose', type=int, nargs='?', default=1, help='Logging verbosity level')
+    parser.add_argument("--force_cpu", action='store_true',
+                        help="If set, forces using the CPU for calculations instead of the GPU.")
 
     args = parser.parse_args()
 
@@ -27,11 +30,16 @@ if __name__ == '__main__':
     # load in dataset
     ds = getDatasetSplits(args.name, **args.dataset)
 
+    # device setup
+    device = torch.device("cuda" if not args.force_cpu and torch.cuda.is_available() else "cpu")
+    logging.info(f"Using {device} for tensor calculations, cuda available: {torch.cuda.is_available()}")
+
     # Create gaussian
     logging.info("Learning gaussian distribution")
     startTime = perf_counter()
     gaussian = GaussianParameters.fromDataloader(
-        ds.metadata.numInputs, DataLoader(ds.train, batch_size=args.batch_size, shuffle=False), showProgress=True
+        ds.metadata.numInputs, DataLoader(ds.train, batch_size=args.batch_size, shuffle=False),
+        showProgress=True, device=device
     )
     endTime = perf_counter()
     logging.info(f"Finished learning gaussian after {endTime - startTime} seconds")
