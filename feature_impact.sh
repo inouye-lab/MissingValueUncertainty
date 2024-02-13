@@ -1,3 +1,4 @@
+#!/bin/bash
 # Loads in all relevant datasets
 source ../../miniconda/bin/activate
 conda activate ./venv

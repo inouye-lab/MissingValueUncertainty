@@ -1,3 +1,4 @@
+#!/bin/bash
 # Learn the gaussian distribution for the starcraft dataset
 source ../../miniconda/bin/activate
 conda activate ./venv
