@@ -64,9 +64,9 @@ class Regressor(SerializerMixin, ABC):
             squaredError += ((predicted - targets) ** 2).sum(axis=0)
             seenSamples += targets.shape[0]
             print(f"Evaluating regressor batch {batchIndex + 1}/{totalBatches}", end="\r")
-        else:
-            # this only happens if we have no data
-            squaredError = Tensor([0])
+        # this only happens if we have no data
+        if totalBatches == 0:
+            return Tensor([0])
         return (squaredError / seenSamples).cpu()
 
     def evaluateSplits(self, ds: CsvDatasetSplits) -> None:
