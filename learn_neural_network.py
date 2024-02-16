@@ -166,7 +166,7 @@ if __name__ == '__main__':
             else:
                 logging.info(f'Found new best model with error {validationError}')
                 bestParams = copy.deepcopy(model.nn.state_dict())
-                validationBest = validationError
+                validationBest = validationErrorSum
                 validationFails = 0
 
     # restore best model
