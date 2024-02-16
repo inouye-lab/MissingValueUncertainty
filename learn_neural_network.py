@@ -104,9 +104,9 @@ if __name__ == '__main__':
     model.nn.to(device)
 
     # setup data loading
-    dataLoader = DataLoader(ds.train, batch_size=args.batch_size, shuffle=True, generator=rand)
+    dataLoader = DataLoader(ds.train, batch_size=args.batch_size, shuffle=True, generator=rand, pin_memory=True)
     # TODO: different batch size?
-    validateLoader = DataLoader(ds.validate, batch_size=args.batch_size, shuffle=False, generator=rand)
+    validateLoader = DataLoader(ds.validate, batch_size=args.batch_size, shuffle=False, generator=rand, pin_memory=True)
     testLoader = DataLoader(ds.test, batch_size=args.batch_size, shuffle=False, generator=rand)
 
     # evaluate the initial model
