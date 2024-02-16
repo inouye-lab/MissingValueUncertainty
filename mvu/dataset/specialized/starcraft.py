@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Tuple, List, Union
+from typing import Tuple, List, Union, Dict
 
 from overrides import override
 from sc2image import StarCraftImage
@@ -45,13 +45,15 @@ class StarCraftDataset(Dataset[Tuple[Tensor, Tensor]]):
         return (unitValues.float() / 255).reshape(-1), targets
 
 
-def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = None, validation_percent: float = 0.3,
+def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = None,
+                           validation_percent: float = 0.3, limits: Dict[str,int] = None,
                            image_size: int = 64, sensor_size: int = 1) -> TorchDatasetSplits:
     """
     Creates the needed objects to use the starcraft dataset
     :param path:                Location to load the starcraft dataset into
     :param targets:             Fields from metadata to use as the regression target, can be a string or list of strings
     :param validation_percent:  Percentage of training data to use for validation
+    :param max_samples:         Maximum samples from the dataset to use for train, validate, and test.
     :param image_size:          Size of the image in pixels
     :param sensor_size:         Size of sensors for making values missing
     :return:  Dataset instance
@@ -74,10 +76,30 @@ def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = No
     # we only have train and test for starcraft, so split train into train and validation by percent
     # TODO: consider supporting seeded randomizing the split indices? prevent bias due to ordering in the set
     trainingValidation = StarCraftDataset(path, imageFormat, image_size, targets, train=True)
+    testing = StarCraftDataset(path, imageFormat, image_size, targets, train=False)
+
+    # handle limits, for quicker testing
+    # no extra work if limits are not defined
     trainingValidationSize = len(trainingValidation)
     validationEnd = int(trainingValidationSize * validation_percent)
-    training = Subset(trainingValidation, range(validationEnd, trainingValidationSize))
+    trainingStart = validationEnd
+    trainingEnd = trainingValidationSize
+    if max_samples is not None:
+        # training has a start offset and an end, so need some math to convert the limit
+        if "train" in max_samples:
+            trainLimit = max_samples["test"]
+            if trainLimit < trainingEnd - trainingStart:
+                trainingEnd = trainingStart + trainLimit
+        # validate is easy to limit, just reduce max samples
+        if "validate" in max_samples:
+            validationEnd = min(validationEnd, max_samples["validate"])
+        # only make test a subset if needed, can use the raw dataset otherwise
+        if "test" in max_samples:
+            testLimit = max_samples["test"]
+            if testLimit < len(testing):
+                testing = Subset(testing, range(0, testLimit))
+    # apply the computed limits
+    training = Subset(trainingValidation, range(trainingStart, trainingEnd))
     validation = Subset(trainingValidation, range(0, validationEnd))
 
-    testing = StarCraftDataset(path, imageFormat, image_size, targets, train=False)
     return TorchDatasetSplits(training, validation, testing, meta)
