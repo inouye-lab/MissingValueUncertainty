@@ -153,9 +153,11 @@ if __name__ == '__main__':
             logging.info(f"Evaluating the model via validation data")
             model.nn.eval()
 
+            # FIXME: there is probably a better way to compare multiple variables
             validationError = model.evaluateDataloader(validateLoader, device)
-            if validationError >= validationBest:
-                logging.info(f"Worsening on valid: {validationError} > prev best {validationBest}")
+            validationErrorSum = validationError.sum().item()
+            if validationErrorSum >= validationBest:
+                logging.info(f"Worsening on valid: {validationError}, {validationErrorSum} > prev best {validationBest}")
                 if validationFails >= args.patience:
                     logging.info(f"Exceeding patience {args.patience}, stopping training")
                     break
