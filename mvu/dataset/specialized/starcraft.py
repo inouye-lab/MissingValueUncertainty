@@ -46,7 +46,7 @@ class StarCraftDataset(Dataset[Tuple[Tensor, Tensor]]):
 
 
 def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = None,
-                           validation_percent: float = 0.3, limits: Dict[str,int] = None,
+                           validation_percent: float = 0.3, max_samples: Dict[str,int] = None,
                            image_size: int = 64, sensor_size: int = 1) -> TorchDatasetSplits:
     """
     Creates the needed objects to use the starcraft dataset
