@@ -1,5 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
+from time import perf_counter
 from typing import Any, Optional
 
 import torch
@@ -53,6 +54,7 @@ class Regressor(SerializerMixin, ABC):
         squaredError: Optional[Tensor] = None
         seenSamples = 0
         totalBatches = len(data)
+        startTime = perf_counter()
         for batchIndex, (features, targets) in enumerate(data):
             if device is not None:
                 features = features.to(device)
@@ -67,6 +69,7 @@ class Regressor(SerializerMixin, ABC):
         # this only happens if we have no data
         if totalBatches == 0:
             return Tensor([0])
+        logging.info(f"Evaluated regressor with data loader in {perf_counter() - startTime:.5f} seconds")
         return (squaredError / seenSamples).cpu()
 
     def evaluateSplits(self, ds: CsvDatasetSplits) -> None:
