@@ -93,7 +93,9 @@ if __name__ == '__main__':
     residual = Tensor([0])
     if args.residual_batch is not None:
         startTime = perf_counter()
-        residual = estimateResidual(regressor, DataLoader(ds.validate, shuffle=False, batch_size=args.residual_batch))
+        residual = estimateResidual(regressor, DataLoader(
+            ds.validate, shuffle=False, batch_size=args.residual_batch, pin_memory=True
+        ))
         endTime = perf_counter()
         logging.info(f"Computed residual uncertainty of {residual}. Took {endTime - startTime}")
     else:
@@ -107,7 +109,7 @@ if __name__ == '__main__':
     # create data loader for empirical method
     empiricalLoader: Optional[DataLoader] = None
     if args.empirical_batch is not None:
-        empiricalLoader = DataLoader(ds.validate, shuffle=False, batch_size=args.empirical_batch)
+        empiricalLoader = DataLoader(ds.validate, shuffle=False, batch_size=args.empirical_batch, pin_memory=True)
 
     # learn gaussian distribution
     if args.gaussian_path is not None:
@@ -119,7 +121,7 @@ if __name__ == '__main__':
         startTime = perf_counter()
         gaussianParams = GaussianParameters.fromDataloader(
             ds.metadata.numInputs,
-            DataLoader(ds.train, batch_size=args.gaussian_batch, shuffle=False)
+            DataLoader(ds.train, batch_size=args.gaussian_batch, shuffle=False, pin_memory=True)
         )
         endTime = perf_counter()
         logging.info(f"Learned gaussian distribution in {endTime - startTime} seconds")
@@ -185,7 +187,7 @@ if __name__ == '__main__':
         for method in methods:
             dropFeatures = DataLoader(FeatureCountRemovingDataset(
                 ds.test, ds.metadata, numToDrop, torch.Generator().manual_seed(seeds[0].item())
-            ))
+            ), batch_size=args.method_batch, shuffle=False, pin_memory=True)
             experiments.append(Experiment(method, ds.metadata.name, missingName, missing, residual, data=dropFeatures,
                                           rand=torch.Generator().manual_seed(seeds[1].item()),
                                           storeAllResults=args.write_all_results))
@@ -204,7 +206,7 @@ if __name__ == '__main__':
                 logging.info(f"Setting up experiments for '{featureName}'")
 
                 dropFeature = DataLoader(SpecificFeatureRemovingDataset(ds.test, torch.eq(groups, index)),
-                                         batch_size=args.method_batch, shuffle=False)
+                                         batch_size=args.method_batch, shuffle=False, pin_memory=True)
                 appendExperiments(experiments, methods, ds.metadata.name, featureName,
                                   residual=residual, rand=rand, storeAllResults=args.write_all_results)
 
@@ -215,7 +217,7 @@ if __name__ == '__main__':
                 logging.info(f"Setting up experiments for '{featureName}'")
 
                 dropFeature = DataLoader(SpecificFeatureRemovingDataset(ds.test, torch.ne(groups, index)),
-                                         batch_size=args.method_batch, shuffle=False)
+                                         batch_size=args.method_batch, shuffle=False, pin_memory=True)
                 appendExperiments(experiments, methods, ds.metadata.name, featureName,
                                   residual=residual, rand=rand, storeAllResults=args.write_all_results)
 
