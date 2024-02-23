@@ -30,6 +30,8 @@ if __name__ == '__main__':
     parser.add_argument("name", type=str, help='Name of the dataset to parse')
     parser.add_argument("--dataset", type=json.loads, default=dict(), help='Path to processed dataset to load')
     parser.add_argument("--regressor", type=str, help='Path to the pretrained regressor to load')
+    parser.add_argument("--regressor_feature", type=int, default=-1,
+                        help='Feature index from the regressor to use, if -1 uses all features')
     parser.add_argument("--output", type=str, default="./results/", help='Location to save result CSV')
     parser.add_argument("--write_all_results", action='store_true',
                         help="If set, writes a CSV with results from all samples.")
@@ -85,6 +87,7 @@ if __name__ == '__main__':
     # load in regressor
     logging.info(f"Loading regressor from {args.regressor}")
     regressor = Regressor.load(args.regressor)
+    regressor.setFeatureIndex(args.regressor_feature)
 
     # load in dataset
     ds = getDatasetSplits(args.name, **args.dataset)

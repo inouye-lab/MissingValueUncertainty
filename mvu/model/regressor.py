@@ -94,6 +94,13 @@ class Regressor(SerializerMixin, ABC):
         logging.info(f"MSE for validate: {self.evaluateDataloader(validate, device)}")
         logging.info(f"MSE for test: {self.evaluateDataloader(test, device)}")
 
+    def setFeatureIndex(self, featureIndex: int):
+        """
+        Sets the feature index for this regressor, may be unused.
+        @param featureIndex:  Feature index to use, -1 means all features.
+        """
+        pass
+
 
 class RidgeRegressor(Regressor):
     """Regressor implemented using the SKLearn Ridge Regression functionality"""
@@ -112,11 +119,20 @@ class NeuralNetworkRegressor(Regressor):
     """Regressor using a torch neural network"""
 
     nn: Module
+    featureIndex: int
 
     def __init__(self, nn: Module):
         self.nn = nn
+        self.featureIndex = -1
 
     @override
     def predict(self, features: Tensor) -> Tensor:
-        # TODO: target index as we might have multiple targets
-        return self.nn(features)
+        result = self.nn(features)
+        if self.featureIndex > -1:
+            return result[:, self.featureIndex]
+        return result
+
+    @override
+    def setFeatureIndex(self, featureIndex: int):
+        self.featureIndex = featureIndex
+
