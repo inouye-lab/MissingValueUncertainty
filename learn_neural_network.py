@@ -69,6 +69,8 @@ if __name__ == '__main__':
     if args.input is not None:
         logging.info(f"Loading existing model from {args.input}")
         model = NeuralNetworkRegressor.load(args.input)
+        # ensure the feature index is set, don't want to accidentally retrain with fewer features
+        model.setFeatureIndex(-1)
     elif args.architecture is not None:
         if args.architecture == "image_regression":
             if isinstance(ds.metadata, ImageDatasetMeta):
