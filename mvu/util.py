@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 from .model.regressor import Regressor
 
 
+@torch.nograd
 def estimateResidual(regressor: Regressor, data: DataLoader) -> Tensor:
     """
     Estimates the residual uncertainty for the given regressor and data loader

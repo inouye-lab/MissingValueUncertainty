@@ -127,6 +127,15 @@ class NeuralNetworkRegressor(Regressor):
 
     @override
     def predict(self, features: Tensor) -> Tensor:
+        with torch.no_grad():
+            return self.predictWithGradient(features)
+
+    def predictWithGradient(self, features: Tensor) -> Tensor:
+        """
+        Makes a prediction using this regressor and computing gradients.
+        :param features: Input tensor, dimension 0 is samples and dimension 1 is features
+        :return: Output tensor, with a single dimension representing the prediction
+        """
         result = self.nn(features)
         if self.featureIndex > -1:
             return result[:, self.featureIndex]

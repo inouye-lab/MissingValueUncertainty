@@ -136,7 +136,7 @@ if __name__ == '__main__':
 
             optimizer.zero_grad()
 
-            prediction = model.predict(features)
+            prediction = model.predictWithGradient(features)
             loss: Tensor = lossFunction(prediction, targets)
             loss.backward()
             optimizer.step()
