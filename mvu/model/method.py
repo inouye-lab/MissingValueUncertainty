@@ -58,7 +58,7 @@ class BasicCombinationMethod(Method):
         :param rand:     Random state for random generation
         :return: Vector of missing value variances of size `(samples,)`
         """
-        return torch.zeros((features.shape[INDEX_SAMPLE],))
+        return torch.zeros((features.shape[INDEX_SAMPLE],), device=features.device)
 
     @override
     def predictWithUncertainty(self, features: Tensor, rand: Generator = None) -> Tuple[Tensor, Tensor]:
@@ -128,7 +128,7 @@ class EmpiricalUncertaintyMethod(BasicCombinationMethod, ABC, Generic[C]):
     @override
     def estimateUncertainty(self, features: Tensor, rand: Generator = None) -> Tensor:
         numSamples = features.shape[INDEX_SAMPLE]
-        uncertainty = torch.empty((numSamples,), dtype=torch.float)
+        uncertainty = torch.empty((numSamples,), device=features.device, dtype=torch.float)
         for i in range(numSamples):
             vector = features[i, :]
 
@@ -141,11 +141,13 @@ class EmpiricalUncertaintyMethod(BasicCombinationMethod, ABC, Generic[C]):
                 # if it's a new combination, need to calculate then cache
                 # calculate squared error over time to prevent bias from the specific samples
                 device = features.device
-                squaredError = torch.tensor([0], dtype=torch.float)
+                squaredError = torch.tensor([0], device=device, dtype=torch.float)
                 seenSamples = 0
 
                 # simply process each batch one at a time, no need to do anything fancy with loaders
                 for (validateFeatures, validateTargets) in self.data:
+                    validateFeatures = validateFeatures.to(device)
+                    validateTargets = validateTargets.to(device)
                     means = self.regressor.predict(
                         self.imputator.impute(
                             self.mutate(validateFeatures, cacheKey, rand),

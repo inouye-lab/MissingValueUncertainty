@@ -43,7 +43,8 @@ class Distribution(ABC):
         # start by constructing a 3D matrix of test sample * input sample * feature
         dataSample = features.shape[INDEX_SAMPLE]
         numFeatures = features.shape[INDEX_FEATURE]
-        augmentedFeatures = torch.zeros((dataSample, distSamples, numFeatures))
+        augmentedFeatures = torch.zeros((dataSample, distSamples, numFeatures),
+                                        device=features.device, dtype=torch.float)
 
         # form matrix from samples
         for sampleIndex in range(dataSample):
@@ -114,7 +115,14 @@ class GaussianParameters(SerializerMixin):
 
     @classmethod
     def fromDataloader(cls, numInputs: int, data: DataLoader, showProgress: bool = False, device: torch.device = None):
-        """Creates an instance from a data loader (requires processing samples in batches)"""
+        """
+        Creates an instance from a data loader (requires processing samples in batches)
+        :param numInputs:    Number of input features
+        :param data:         Data loader to use in creating the parameters
+        :param showProgress: If true, prints regular updates on progress
+        :param device:       Device to use for computing the mean and variance, and the resulting parameter device
+        :return  Distribution instance on the passed device
+        """
         # need the means to compute the covariances
         numSamples = 0
         means = torch.zeros((numInputs,), device=device)
@@ -143,7 +151,19 @@ class GaussianParameters(SerializerMixin):
         logging.info(f"Computed gaussian covariance")
 
         # create the final distribution
-        return cls(means.cpu(), covariance.cpu())
+        return cls(means, covariance)
+
+    def to(self, device: torch.device) -> "GaussianParameters":
+        """
+        Copies the parameters to the given device
+        :param device:  Device to use
+        :return:  New instance of params on the new device
+        """
+        return GaussianParameters(self.mean.to(device), self.covariance.to(device))
+
+    def cpu(self) -> "GaussianParameters":
+        """Moves this parameter set to the CPU"""
+        return GaussianParameters(self.mean.cpu(), self.covariance.cpu())
 
 
 class MarginalGaussianDistribution(Imputator, Distribution):
@@ -198,7 +218,7 @@ class MarginalGaussianDistribution(Imputator, Distribution):
         missingMask = torch.isnan(vector)
         missingCount = torch.count_nonzero(missingMask)
         if missingCount == 0:
-            empty = torch.Tensor([])
+            empty = torch.tensor([], device=vector.device)
             if returnCovariance:
                 return empty, empty
             return empty
@@ -252,8 +272,8 @@ class MarginalGaussianDistribution(Imputator, Distribution):
         # ideally we would always have positive definite,
         # but something about the covariance conditioning does not guarantee that
         return torch.tensor(
-            self._local.generator.multivariate_normal(missingMean.numpy(), missingCov.numpy(), distSamples),
-            dtype=torch.float
+            self._local.generator.multivariate_normal(missingMean.cpu().numpy(), missingCov.cpu().numpy(), distSamples),
+            device=sample.device, dtype=torch.float
         )
 
     @override
@@ -328,7 +348,11 @@ class ConditionalGaussianDistribution(MarginalGaussianDistribution):
         # multiplication of obsCovInv and obsOffset
         scaledOffset: Tensor
         if self.leastSquares:
-            scaledOffset = torch.linalg.lstsq(obsCov, obsOffset).solution
+            # least squares does not work on CUDA using the desired algorithm, the only supported CUDA leads to NaNs
+            # to work around this, just move to the CPU for this calculation, slower but its the best option
+            # TODO: consider if this is dataset specific
+            # TODO: perhaps perform this entire method on the CPU?
+            scaledOffset = torch.linalg.lstsq(obsCov.cpu(), obsOffset.cpu(), driver="gelsy").solution.to(vector.device)
         else:
             obsCovInv = torch.linalg.pinv(obsCov, hermitian=self.hermitian)
             scaledOffset = torch.matmul(obsCovInv, obsOffset)
@@ -353,7 +377,8 @@ class ConditionalGaussianDistribution(MarginalGaussianDistribution):
             # multiplication of obsCovInv and corrMatrix.T
             scaledCorr: Tensor
             if self.leastSquares:
-                scaledCorr = torch.linalg.lstsq(obsCov, corrMatrix.T).solution
+                # see above comment on lstsq algorithms
+                scaledCorr = torch.linalg.lstsq(obsCov.cpu(), corrMatrix.T.cpu(), driver="gelsy").solution.to(vector.device)
             else:
                 scaledCorr = torch.matmul(obsCovInv, corrMatrix.T)
             condVar = self.covariance[missingIndices, missingIndices.T] - torch.matmul(corrMatrix, scaledCorr)

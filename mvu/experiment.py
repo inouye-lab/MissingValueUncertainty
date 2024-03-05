@@ -32,6 +32,8 @@ class Experiment:
     """Allows us to guarantee no matter what order experiments run, we still get the same results when seeded"""
     storeAllResults: bool
     """If true, stores per sample results as a tensor in the experiment."""
+    device: Optional[torch.device]
+    """Device used for experiments, if None uses default device (typically CPU)"""
 
     # data loading
     dataName: str
@@ -66,14 +68,15 @@ class Experiment:
 
     def __init__(self, method: Method, dataName: str, missingName: str, missingPercent: float = None,
                  residual: Tensor = None, data: DataLoader = None, dataset: CsvDataset = None,
-                 storeAllResults: bool = False, rand: Generator = None):
+                 storeAllResults: bool = False, rand: Generator = None, device: torch.device = None):
         assert data is not None or dataset is not None, "Must pass in either data or dataset"
         self.method = method
         self.dataName = dataName
         self.missingName = missingName
         self.missingPercent = missingPercent
-        self.residual = residual if residual is not None else torch.tensor([0], dtype=torch.float)
+        self.residual = residual if residual is not None else torch.tensor([0], device=device, dtype=torch.float)
         self.storeAllResults = storeAllResults
+        self.device = device
 
         self.data = data
         self.dataset = dataset
@@ -81,9 +84,9 @@ class Experiment:
         # results
         self.totalSamples = 0
         self.processedSamples = 0
-        self.squaredError = torch.tensor([0], dtype=torch.float)
-        self.missingVariance = torch.tensor([0], dtype=torch.float)
-        self.ll = torch.tensor([0], dtype=torch.float)
+        self.squaredError = torch.tensor([0], device=device, dtype=torch.float)
+        self.missingVariance = torch.tensor([0], device=device, dtype=torch.float)
+        self.ll = torch.tensor([0], device=device, dtype=torch.float)
         self.sampleResults = []
         self.time = 0
 
@@ -92,17 +95,21 @@ class Experiment:
         """Name of the overall experiment"""
         return f"{self.dataName} - {self.method.name} - {self.missingName}"
 
-    def _runBatch(self, features: Tensor, targets: Tensor, details: str = "") -> float:
+    def _runBatch(self, features: Tensor, targetsCpu: Tensor, details: str = "") -> float:
         """
         Runs a single batch of the experiment
-        :param features:  Features for this batch
-        :param targets:   Targets for this batch, to compute squared error and log likelihood
-        :param details:   Extra information for exception debugging
+        :param features:    Features for this batch
+        :param targetsCpu:  Targets for this batch, to compute squared error and log likelihood
+        :param details:     Extra information for exception debugging
         :return:   Time this batch took to run
         """
         batchStart = perf_counter()
-        self.totalSamples += targets.shape[0]
+        self.totalSamples += targetsCpu.shape[0]
         try:
+            if self.device is not None:
+                features = features.to(self.device)
+                targets = targetsCpu.to(self.device)
+
             mean, variance = self.method.predictWithUncertainty(features, self.rand)
 
             # we use 2 summary statistics: squared error and LL, save them both ready for averaging
@@ -113,13 +120,13 @@ class Experiment:
             # store the results for this batch if requested
             # TODO: consider supporting separate output CSV per experiment so we don't have to store this all in memory
             if self.storeAllResults:
-                self.sampleResults.append((targets, mean, variance, squaredError, ll))
+                self.sampleResults.append((targetsCpu, mean.cpu(), variance.cpu(), squaredError.cpu(), ll.cpu()))
 
             # start summing results
             self.squaredError += squaredError.sum()
             self.missingVariance += variance.sum()
             self.ll += ll.sum()
-            self.processedSamples += targets.shape[0]
+            self.processedSamples += targetsCpu.shape[0]
             batchEnd = perf_counter()
             return batchEnd - batchStart
         except KeyboardInterrupt as e:

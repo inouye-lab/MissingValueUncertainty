@@ -42,6 +42,8 @@ if __name__ == '__main__':
                         help="Number of Monte Carlo samples to take")
     parser.add_argument("--mice_iterations", type=int, nargs='*', default=[],
                         help="Number of mice iterations to run")
+    parser.add_argument("--force_cpu", action='store_true',
+                        help="If set, forces using the CPU for calculations instead of the GPU.")
 
     # experiment selection
     parser.add_argument("--missing", type=float, default=[], nargs='*',
@@ -92,20 +94,27 @@ if __name__ == '__main__':
     regressor = Regressor.load(args.regressor)
     regressor.setFeatureIndex(args.regressor_feature)
 
+    # device setup
+    device = torch.device("cuda" if not args.force_cpu and torch.cuda.is_available() else "cpu")
+    logging.info(f"Using {device} for tensor calculations, cuda available: {torch.cuda.is_available()}")
+    regressor.to(device)
+
     # load in dataset
     ds = getDatasetSplits(args.name, **args.dataset)
+    if ds.metadata.groups is not None:
+        ds.metadata.groups = ds.metadata.groups.to(device)
     logging.info(f"Loaded in dataset {args.name} with {len(ds.train)} training samples, "
                  f"{len(ds.validate)} validation samples, and {len(ds.test)} test samples.")
 
     # compute residual, it is just a function of regressor and dataset so only need one
-    residual = torch.tensor([0], dtype=torch.float)
+    residual = torch.tensor([0], device=device, dtype=torch.float)
     if args.residual_batch is not None:
         startTime = perf_counter()
         residual = estimateResidual(regressor, DataLoader(
             ds.validate, shuffle=False, batch_size=args.residual_batch, pin_memory=True
-        ))
+        ), device=device)
         endTime = perf_counter()
-        logging.info(f"Computed residual uncertainty of {residual}. Took {endTime - startTime}")
+        logging.info(f"Computed residual uncertainty of {residual.cpu()}. Took {endTime - startTime}")
     else:
         logging.info(f"Skipping computing residual, set residual_batch to use residual.")
 
@@ -143,16 +152,18 @@ if __name__ == '__main__':
             logging.info("Disabling empirical by feature")
 
     # learn gaussian distribution
+    gaussianParams: GaussianParameters
     if args.gaussian_path is not None:
         logging.info(f"Loading gaussian params from {args.gaussian_path}")
-        gaussianParams = GaussianParameters.load(args.gaussian_path)
+        gaussianParams = GaussianParameters.load(args.gaussian_path).to(device)
     else:
         # TODO: should this be optional?
         logging.info("Learning gaussian distribution")
         startTime = perf_counter()
         gaussianParams = GaussianParameters.fromDataloader(
             ds.metadata.numInputs,
-            DataLoader(ds.train, batch_size=args.gaussian_batch, shuffle=False, pin_memory=True)
+            DataLoader(ds.train, batch_size=args.gaussian_batch, shuffle=False, pin_memory=True),
+            device=device
         )
         endTime = perf_counter()
         logging.info(f"Learned gaussian distribution in {endTime - startTime} seconds")
@@ -221,7 +232,7 @@ if __name__ == '__main__':
                 ds.test, ds.metadata, numToDrop, torch.Generator().manual_seed(seeds[0].item())
             ), batch_size=args.method_batch, shuffle=False, pin_memory=True)
             experiments.append(Experiment(method, ds.metadata.name, missingName, missing, residual, data=dropFeatures,
-                                          rand=torch.Generator().manual_seed(seeds[1].item()),
+                                          rand=torch.Generator().manual_seed(seeds[1].item()), device=device,
                                           storeAllResults=args.write_all_results))
 
     # individual missing feature experiment

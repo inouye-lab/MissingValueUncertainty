@@ -6,20 +6,25 @@ from torch.utils.data import DataLoader
 from .model.regressor import Regressor
 
 
-@torch.nograd
-def estimateResidual(regressor: Regressor, data: DataLoader) -> Tensor:
+@torch.no_grad()
+def estimateResidual(regressor: Regressor, data: DataLoader, device: torch.device = None) -> Tensor:
     """
     Estimates the residual uncertainty for the given regressor and data loader
     :param regressor: Regressor instance
     :param data:      Data loader providing tuples of `(features, targets)` of sizes `(samples, features)`
                       and `(samples,)`, with no missingness
-    :return: Residual uncertainty for the whole model as a tensor of size 1
+    :param device:    Device to use for tensor calculations. Returned result will also be on that device.
+                      Expected to match the regressor's device
+    :return: Residual uncertainty for the whole model as a tensor of size 1 on the passed device
     """
-    squaredError = torch.tensor([0], dtype=torch.float)
+    squaredError = torch.tensor([0], device=device, dtype=torch.float)
     seenSamples = 0
 
     # simply process each batch one at a time, no need to do anything fancy with loaders
     for (features, targets) in data:
+        if device is not None:
+            features = features.to(device)
+            targets = targets.to(device)
         means = regressor.predict(features)
         squaredError += ((means - targets) ** 2).sum()
         seenSamples += targets.shape[0]

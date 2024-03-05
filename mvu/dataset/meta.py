@@ -185,7 +185,8 @@ class DatasetMeta(object):
                 # argmax finds the most significant feature in each sample
                 maxIndexes = torch.argmax(features[:, groupIndexes], dim=INDEX_FEATURE)
                 # overwrite probability with onehot
-                features[:, groupIndexes] = torch.nn.functional.one_hot(maxIndexes, groupSize).type(torch.float)
+                features[:, groupIndexes] = (torch.nn.functional.one_hot(maxIndexes, groupSize)
+                                             .type(torch.float).to(features.device))
         if vectorInput:
             return features.reshape(-1)
         return features

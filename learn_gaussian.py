@@ -40,7 +40,7 @@ if __name__ == '__main__':
     gaussian = GaussianParameters.fromDataloader(
         ds.metadata.numInputs, DataLoader(ds.train, batch_size=args.batch_size, shuffle=False),
         showProgress=True, device=device
-    )
+    ).cpu()
     endTime = perf_counter()
     logging.info(f"Finished learning gaussian after {endTime - startTime} seconds")
 

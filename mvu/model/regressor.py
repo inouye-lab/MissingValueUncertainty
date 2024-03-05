@@ -101,18 +101,31 @@ class Regressor(SerializerMixin, ABC):
         """
         pass
 
+    @abstractmethod
+    def to(self, device: torch.device):
+        """Sets configuration for this regressor at evaluation"""
+        pass
+
 
 class RidgeRegressor(Regressor):
     """Regressor implemented using the SKLearn Ridge Regression functionality"""
 
     ridge: Ridge
+    device: Optional[torch.device]
 
     def __init__(self, ridge: Ridge):
         self.ridge = ridge
+        self.device = None
 
     @override
     def predict(self, features: Tensor) -> Tensor:
-        return torch.tensor(self.ridge.predict(features.numpy()))
+        return torch.tensor(self.ridge.predict(features.detach().cpu().numpy()), device=self.device)
+
+    @override
+    def to(self, device: torch.device):
+        self.device = device
+        if device.type != 'cpu':
+            logging.warning(f"RidgeRegressor does not benefit from device {device}")
 
 
 class NeuralNetworkRegressor(Regressor):
@@ -144,4 +157,8 @@ class NeuralNetworkRegressor(Regressor):
     @override
     def setFeatureIndex(self, featureIndex: int):
         self.featureIndex = featureIndex
+
+    @override
+    def to(self, device: torch.device):
+        self.nn.to(device)
 

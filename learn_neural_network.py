@@ -103,7 +103,7 @@ if __name__ == '__main__':
     # device setup
     device = torch.device("cuda" if not args.force_cpu and torch.cuda.is_available() else "cpu")
     logging.info(f"Using {device} for tensor calculations, cuda available: {torch.cuda.is_available()}")
-    model.nn.to(device)
+    model.to(device)
 
     # setup data loading
     dataLoader = DataLoader(ds.train, batch_size=args.batch_size, shuffle=True, generator=rand, pin_memory=True)

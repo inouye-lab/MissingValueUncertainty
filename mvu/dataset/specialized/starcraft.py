@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 from typing import Tuple, List, Union, Dict
 
+import torch
 from overrides import override
 from sc2image import StarCraftImage
 from torch import Tensor

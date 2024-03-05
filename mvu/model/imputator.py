@@ -137,7 +137,7 @@ class MiceImputator(Imputator):
             inputs = torch.concat((features, self.additionalData))
 
         # run mice
-        mouse = MICEData(DataFrame(inputs.numpy(),
+        mouse = MICEData(DataFrame(inputs.cpu().numpy(),
                                    columns=[label.replace(" ", "_") for label in self.metadata.labels]))
         mouse.update_all(self.iterations)
 
