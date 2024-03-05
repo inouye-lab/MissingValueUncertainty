@@ -123,6 +123,8 @@ class Experiment:
             self.processedSamples += targets.shape[0]
             batchEnd = perf_counter()
             return batchEnd - batchStart
+        except KeyboardInterrupt as e:
+            raise e  # propagate keyboard interrupt
         except BaseException as e:
             batchEnd = perf_counter()
             time = batchEnd - batchStart
@@ -136,16 +138,24 @@ class Experiment:
         startTime = perf_counter()
 
         # approach 1: data loader, run experiment in batches
-        if self.data is not None:
-            try:
-                for i, (features, targets) in enumerate(self.data):
-                    time = self._runBatch(features, targets, f" batch {i+1}")
-                    logging.debug(f"Batch {i+1} for {self.experimentName} done in {time} seconds")
-            except BaseException as e:
-                handleException(type(e), e, e.__traceback__,
-                                message=f"Failed to process {self.experimentName} due to dataloader exception")
-        elif self.dataset is not None:
-            self._runBatch(self.dataset.features, self.dataset.targets)
+        try:
+            if self.data is not None:
+                try:
+                    for i, (features, targets) in enumerate(self.data):
+                        time = self._runBatch(features, targets, f" batch {i+1}")
+                        logging.debug(f"Batch {i+1} for {self.experimentName} done in {time} seconds")
+                except KeyboardInterrupt as e:
+                    raise e  # propagate keyboard interrupt
+                except BaseException as e:
+                    handleException(type(e), e, e.__traceback__,
+                                    message=f"Failed to process {self.experimentName} due to dataloader exception")
+            elif self.dataset is not None:
+                self._runBatch(self.dataset.features, self.dataset.targets)
+        except KeyboardInterrupt as e:
+            # this is just logging the context so we know which experiment was terminated
+            # its in the log again later and earlier, but this reduces some of the debug time
+            logging.error(f"Received keyboard interrupt during {self.experimentName}, terminating program")
+            raise e
 
         # store final experiment time
         endTime = perf_counter()
