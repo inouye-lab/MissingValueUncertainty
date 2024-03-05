@@ -8,7 +8,7 @@ from typing import List, Optional, TextIO
 
 import torch
 from torch import Generator, Tensor
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset, Dataset, TensorDataset
 
 from mvu.dataset.loader import getDatasetSplits
 from mvu.model.distribution import ConditionalGaussianDistribution, Distribution, MarginalGaussianDistribution, \
@@ -66,6 +66,9 @@ if __name__ == '__main__':
                         help="Number of samples to use in a batch for computing the residual uncertainty")
     parser.add_argument("--empirical_batch", type=int, default=None,
                         help="Number of samples to use in a batch for empirical methods")
+    parser.add_argument("--empirical_limit", type=int, default=None,
+                        help="Max number of samples from the validation dataset to use in empirical feature. "
+                             "Set to 0 to disable empirical feature. Does not affect empirical by count.")
     parser.add_argument("--method_batch", type=int, default=100,
                         help="Number of samples to use in a method batch")
 
@@ -113,8 +116,31 @@ if __name__ == '__main__':
 
     # create data loader for empirical method
     empiricalLoader: Optional[DataLoader] = None
+    empiricalFeatureLoader: Optional[DataLoader] = None
     if args.empirical_batch is not None:
         empiricalLoader = DataLoader(ds.validate, shuffle=False, batch_size=args.empirical_batch, pin_memory=True)
+        # empirical by feature can be disabled or set to a smaller sample set as its more expensive to run
+        if args.empirical_limit is None:
+            logging.info("Using all samples for empirical by feature")
+            empiricalFeatureLoader = empiricalLoader
+        elif args.empirical_limit > 0:
+            dataset: Optional[Dataset] = None
+            # if we have one batch, just cache it directly as a tensor dataset to speed things up (helps starcraft)
+            if args.empirical_limit <= args.empirical_batch:
+                logging.info(f"Limiting empirical by feature to {args.empirical_batch} samples, caching the batch")
+                for (features, targets) in empiricalLoader:
+                    dataset = TensorDataset(features[0:args.empirical_limit, :], targets[0:args.empirical_limit])
+                    break
+                else:
+                    logging.error("Failed to create empirical by feature loader as the validation dataset is empty")
+            else:
+                logging.info(f"Limiting empirical by feature to {args.empirical_batch} samples")
+                dataset = Subset(ds.validate, range(0, args.empirical_limit))
+            if dataset is not None:
+                empiricalFeatureLoader = DataLoader(dataset, shuffle=False, batch_size=args.empirical_batch,
+                                                    pin_memory=True)
+        else:
+            logging.info("Disabling empirical by feature")
 
     # learn gaussian distribution
     if args.gaussian_path is not None:
@@ -142,7 +168,8 @@ if __name__ == '__main__':
         # add empirical if requested
         if empiricalLoader is not None:
             method(EmpiricalUncertaintyByCount(regressor, imputator, ds.metadata, empiricalLoader, residual))
-            method(EmpiricalUncertaintyByFeature(regressor, imputator, ds.metadata, empiricalLoader, residual))
+        if empiricalFeatureLoader is not None:
+            method(EmpiricalUncertaintyByFeature(regressor, imputator, ds.metadata, empiricalFeatureLoader, residual))
 
     def monteCarlo(distribution: Distribution):
         for samples in args.mc_samples:
