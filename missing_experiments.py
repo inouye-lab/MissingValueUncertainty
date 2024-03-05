@@ -91,6 +91,8 @@ if __name__ == '__main__':
 
     # load in dataset
     ds = getDatasetSplits(args.name, **args.dataset)
+    logging.info(f"Loaded in dataset {args.name} with {len(ds.train)} training samples, "
+                 f"{len(ds.validate)} validation samples, and {len(ds.test)} test samples.")
 
     # compute residual, it is just a function of regressor and dataset so only need one
     residual = torch.tensor([0], dtype=torch.float)
