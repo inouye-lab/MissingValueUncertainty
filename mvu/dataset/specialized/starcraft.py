@@ -35,10 +35,10 @@ class StarCraftDataset(Dataset[Tuple[Tensor, Tensor]]):
         # if no target is defined, just use 0. This just makes it simpler in contexts that are not regressing
         targets: Tensor
         if len(self.targets) == 0:
-            targets = Tensor([0])
+            targets = torch.tensor([0])
         else:
             metadata = data["metadata"]
-            targets = Tensor([metadata[target] for target in self.targets])
+            targets = torch.tensor([metadata[target] for target in self.targets])
         # expect vectors for the input instead of an image
         # we also convert to floats so we can actually place nan in the tensor for missingness
         # TODO: should we be converting to a range of -1 to 1 instead of 0 to 1?

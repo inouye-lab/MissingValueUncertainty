@@ -251,7 +251,10 @@ class MarginalGaussianDistribution(Imputator, Distribution):
         # torch requires positive definite instead of positive-semidefinite, so stuck using numpy here
         # ideally we would always have positive definite,
         # but something about the covariance conditioning does not guarantee that
-        return torch.Tensor(self._local.generator.multivariate_normal(missingMean, missingCov, distSamples))
+        return torch.tensor(
+            self._local.generator.multivariate_normal(missingMean.numpy(), missingCov.numpy(), distSamples),
+            dtype=torch.float
+        )
 
     @override
     def _normalize(self, augmentedFeatures: Tensor) -> Tensor:

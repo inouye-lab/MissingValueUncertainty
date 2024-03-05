@@ -68,7 +68,7 @@ class Regressor(SerializerMixin, ABC):
             print(f"Evaluating regressor batch {batchIndex + 1}/{totalBatches}", end="\r")
         # this only happens if we have no data
         if totalBatches == 0:
-            return Tensor([0])
+            return torch.tensor([0])
         logging.info(f"Evaluated regressor with data loader in {perf_counter() - startTime:.5f} seconds")
         return (squaredError / seenSamples).cpu()
 
@@ -112,7 +112,7 @@ class RidgeRegressor(Regressor):
 
     @override
     def predict(self, features: Tensor) -> Tensor:
-        return Tensor(self.ridge.predict(features.numpy()))
+        return torch.tensor(self.ridge.predict(features.numpy()))
 
 
 class NeuralNetworkRegressor(Regressor):

@@ -140,7 +140,8 @@ class EmpiricalUncertaintyMethod(BasicCombinationMethod, ABC, Generic[C]):
                 # logging.info(f"Cache Miss for {i} from {cacheKey}")
                 # if it's a new combination, need to calculate then cache
                 # calculate squared error over time to prevent bias from the specific samples
-                squaredError = Tensor([0])
+                device = features.device
+                squaredError = torch.tensor([0], dtype=torch.float)
                 seenSamples = 0
 
                 # simply process each batch one at a time, no need to do anything fancy with loaders

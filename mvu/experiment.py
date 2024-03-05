@@ -64,16 +64,15 @@ class Experiment:
     time: float
     """Duration of this experiment"""
 
-    def __init__(self, method: Method, dataName: str,
-                 missingName: str, missingPercent: float = None, residual: Tensor = Tensor([0]),
-                 data: DataLoader = None, dataset: CsvDataset = None,
+    def __init__(self, method: Method, dataName: str, missingName: str, missingPercent: float = None,
+                 residual: Tensor = None, data: DataLoader = None, dataset: CsvDataset = None,
                  storeAllResults: bool = False, rand: Generator = None):
         assert data is not None or dataset is not None, "Must pass in either data or dataset"
         self.method = method
         self.dataName = dataName
         self.missingName = missingName
         self.missingPercent = missingPercent
-        self.residual = residual
+        self.residual = residual if residual is not None else torch.tensor([0], dtype=torch.float)
         self.storeAllResults = storeAllResults
 
         self.data = data
@@ -82,9 +81,9 @@ class Experiment:
         # results
         self.totalSamples = 0
         self.processedSamples = 0
-        self.squaredError = Tensor([0])
-        self.missingVariance = Tensor([0])
-        self.ll = Tensor([0])
+        self.squaredError = torch.tensor([0], dtype=torch.float)
+        self.missingVariance = torch.tensor([0], dtype=torch.float)
+        self.ll = torch.tensor([0], dtype=torch.float)
         self.sampleResults = []
         self.time = 0
 

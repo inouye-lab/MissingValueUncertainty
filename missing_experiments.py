@@ -93,7 +93,7 @@ if __name__ == '__main__':
     ds = getDatasetSplits(args.name, **args.dataset)
 
     # compute residual, it is just a function of regressor and dataset so only need one
-    residual = Tensor([0])
+    residual = torch.tensor([0], dtype=torch.float)
     if args.residual_batch is not None:
         startTime = perf_counter()
         residual = estimateResidual(regressor, DataLoader(

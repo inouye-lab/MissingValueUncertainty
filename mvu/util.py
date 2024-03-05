@@ -15,7 +15,7 @@ def estimateResidual(regressor: Regressor, data: DataLoader) -> Tensor:
                       and `(samples,)`, with no missingness
     :return: Residual uncertainty for the whole model as a tensor of size 1
     """
-    squaredError = Tensor([0])
+    squaredError = torch.tensor([0], dtype=torch.float)
     seenSamples = 0
 
     # simply process each batch one at a time, no need to do anything fancy with loaders
