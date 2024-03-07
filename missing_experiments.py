@@ -54,6 +54,8 @@ if __name__ == '__main__':
                         help='If set, runs the feature impact experiments by making each feature only present.')
 
     # method configuration
+    parser.add_argument("--skip_basic_imputation", action='store_true',
+                        help="If set, basic imputation (non-empirical) will not be run.")
     parser.add_argument("--gaussian_path", type=str, default=None, help='Path to the pretrained gaussian to load')
     parser.add_argument("--gaussian_pseudo_inverse", action='store_true',
                         help='If set, uses the pseudo-inverse for multiplications for the gaussian methods.'
@@ -183,12 +185,13 @@ if __name__ == '__main__':
 
     # add methods
     def method(method: Method):
-        """Adds an method"""
+        """Adds a method"""
         methods.append(method)
 
     def imputator(imputator: Imputator):
         """Adds all three basic imputation methods"""
-        method(BasicCombinationMethod(regressor, imputator))
+        if not args.skip_basic_imputation:
+            method(BasicCombinationMethod(regressor, imputator))
         # add empirical if requested
         if empiricalLoader is not None:
             method(EmpiricalUncertaintyByCount(regressor, imputator, ds.metadata, empiricalLoader, residual))
