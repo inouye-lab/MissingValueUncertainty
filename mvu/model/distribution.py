@@ -9,6 +9,7 @@ from torch import Tensor, Generator
 # from torch.distributions.multivariate_normal import MultivariateNormal
 
 from numpy import random
+from torch.distributions import MultivariateNormal
 from torch.utils.data import DataLoader
 
 from .imputator import containsMissing, Imputator
@@ -54,7 +55,7 @@ class Distribution(ABC):
             augmentedFeatures[sampleIndex, :, :] = sample.reshape(1, 1, -1).expand(-1, distSamples, -1)
             # If no missing indexes, no need to handle samples
             if torch.count_nonzero(missingIndexes) > 0:
-                augmentedFeatures[sampleIndex, :, missingIndexes] = self._sampleDistribution(sample, distSamples, rand)
+                augmentedFeatures[sampleIndex, :, missingIndexes] = self._sampleDistribution(sample, distSamples, rand, sampleIndex)
 
                 # we should have filled in all nan values in the final array
                 assert not containsMissing(augmentedFeatures[sampleIndex, :, :])
@@ -70,12 +71,14 @@ class Distribution(ABC):
         pass
 
     @abstractmethod
-    def _sampleDistribution(self, sample: Tensor, distSamples: int, rand: Generator = None) -> Tensor:
+    def _sampleDistribution(self, sample: Tensor, distSamples: int, rand: Generator = None, sampleIndex: int = -1
+                            ) -> Tensor:
         """
         Samples the distribution, producing a matrix of samples.
         :param sample:       Given sample, of size `(features,)`.
         :param distSamples:  Number of samples of this distribution to take
         :param rand:         Random state
+        :param sampleIndex:  Index of the current sample, for debug
         :return:  Matrix of size `(distSamples,features)`.
         """
         pass
@@ -182,10 +185,11 @@ class MarginalGaussianDistribution(Imputator, Distribution):
     Temporary generator used during sample generation as we are unable to use the torch multivariate normal
     """
 
-    def __init__(self, datasetMeta: DatasetMeta, params: GaussianParameters):
+    def __init__(self, datasetMeta: DatasetMeta, params: GaussianParameters, forceNumpy: bool = False):
         datasetMeta.validateFeatures(params.mean, isVector=True)
         self.datasetMeta = datasetMeta
         self.params = params
+        self.forceNumpy = forceNumpy
         self._local = threading.local()
 
     @property
@@ -264,13 +268,17 @@ class MarginalGaussianDistribution(Imputator, Distribution):
         return result
 
     @override
-    def _sampleDistribution(self, sample: Tensor, distSamples: int, rand: Generator = None) -> Tensor:
+    def _sampleDistribution(self, sample: Tensor, distSamples: int, rand: Generator = None, sampleIndex: int = -1
+                            ) -> Tensor:
         missingMean, missingCov = self.condition(sample, returnCovariance=True)
-        # return MultivariateNormal(missingMean, covariance_matrix=missingCov).sample(torch.Size((distSamples,)))
-
-        # torch requires positive definite instead of positive-semidefinite, so stuck using numpy here
-        # ideally we would always have positive definite,
-        # but something about the covariance conditioning does not guarantee that
+        if not self.forceNumpy:
+            try:
+                # ideally use pytorch's method as we can use it on the GPU
+                # however, torch requires positive definite which limits usability.
+                # It should be guaranteed but something in our conditioning sometimes loses that (likely stability).
+                return MultivariateNormal(missingMean, covariance_matrix=missingCov).sample(torch.Size((distSamples,)))
+            except ValueError:
+                logging.warning(f"Cannot sample {self.name} for index {sampleIndex} in PyTorch, falling back to Numpy.")
         return torch.tensor(
             self._local.generator.multivariate_normal(missingMean.cpu().numpy(), missingCov.cpu().numpy(), distSamples),
             device=sample.device, dtype=torch.float
@@ -306,10 +314,10 @@ class ConditionalGaussianDistribution(MarginalGaussianDistribution):
     Unused if `leastSquares` is True and not using `schur`.
     """
 
-    def __init__(self, datasetMeta: DatasetMeta, params: GaussianParameters,
+    def __init__(self, datasetMeta: DatasetMeta, params: GaussianParameters, forceNumpy: bool = False,
                  schur: Union[Tensor, bool] = False, leastSquares: bool = True, hermitian: bool = True):
 
-        super().__init__(datasetMeta, params)
+        super().__init__(datasetMeta, params, forceNumpy=forceNumpy)
         self.leastSquares = leastSquares
         self.hermitian = hermitian
 

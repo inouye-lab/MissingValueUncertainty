@@ -63,6 +63,10 @@ if __name__ == '__main__':
                              'If unset, uses matrix multiplications respecting gaussian_pseudo_inverse')
     parser.add_argument("--gaussian_batch", type=int, default=100,
                         help="Number of samples to use in a batch for computing the gaussian covariance")
+    parser.add_argument("--gaussian_force_numpy", action='store_true',
+                        help="Forces use of numpy to sample gaussians. This may be slower as it does not support GPU, "
+                             "but if too many samples are unable to use Torch, skipping the try/catch is faster.")
+
     # batch sizes
     parser.add_argument("--residual_batch", type=int, default=None,
                         help="Number of samples to use in a batch for computing the residual uncertainty")
@@ -98,6 +102,10 @@ if __name__ == '__main__':
     if args.cuda_index >= 0 and torch.cuda.is_available():
         device = torch.device("cuda", index=args.cuda_index)
         logging.info(f"Using {device} for tensor calculations")
+        # PyTorch lazy loads some of its modules which causes issues when in both GPU and threading if we happen to
+        # try and load it on multiple threads at the same time. Workaround by using it before we dispatch.
+        # see https://github.com/pytorch/pytorch/issues/90613 for more info
+        torch.inverse(torch.ones((1, 1), device=device))
     else:
         device = torch.device("cpu")
         # we log whether CUDA is available to make it more clear if it was not an option or force disabled
@@ -193,14 +201,17 @@ if __name__ == '__main__':
 
     # will be using conditional gaussian in several places
     condGaussian = ConditionalGaussianDistribution(
-        ds.metadata, gaussianParams, schur=args.gaussian_schur, leastSquares=not args.gaussian_pseudo_inverse
+        ds.metadata, gaussianParams,
+        schur=args.gaussian_schur,
+        leastSquares=not args.gaussian_pseudo_inverse,
+        forceNumpy=args.gaussian_force_numpy
     )
     # basic
     imputator(ZeroImputator())
     imputator(ConstantImputator(ds.metadata.normalizeFeatures(gaussianParams.mean), "Mean"))
     imputator(condGaussian)  # Gaussian Conditional Mean Imputation
     # monte carlo
-    monteCarlo(MarginalGaussianDistribution(ds.metadata, gaussianParams))
+    monteCarlo(MarginalGaussianDistribution(ds.metadata, gaussianParams, forceNumpy=args.gaussian_force_numpy))
     monteCarlo(condGaussian)
     # mice
     for iterations in args.mice_iterations:
