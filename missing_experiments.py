@@ -42,8 +42,8 @@ if __name__ == '__main__':
                         help="Number of Monte Carlo samples to take")
     parser.add_argument("--mice_iterations", type=int, nargs='*', default=[],
                         help="Number of mice iterations to run")
-    parser.add_argument("--force_cpu", action='store_true',
-                        help="If set, forces using the CPU for calculations instead of the GPU.")
+    parser.add_argument("--cuda_index", type=int, default=0,
+                        help="Index to use for CUDA, set to -1 to force CPU")
 
     # experiment selection
     parser.add_argument("--missing", type=float, default=[], nargs='*',
@@ -95,8 +95,13 @@ if __name__ == '__main__':
     regressor.setFeatureIndex(args.regressor_feature)
 
     # device setup
-    device = torch.device("cuda" if not args.force_cpu and torch.cuda.is_available() else "cpu")
-    logging.info(f"Using {device} for tensor calculations, cuda available: {torch.cuda.is_available()}")
+    if args.cuda_index >= 0 and torch.cuda.is_available():
+        device = torch.device("cuda", index=args.cuda_index)
+        logging.info(f"Using {device} for tensor calculations")
+    else:
+        device = torch.device("cpu")
+        # we log whether CUDA is available to make it more clear if it was not an option or force disabled
+        logging.info(f"Using {device} for tensor calculations, cuda available: {torch.cuda.is_available()}")
     regressor.to(device)
 
     # load in dataset
