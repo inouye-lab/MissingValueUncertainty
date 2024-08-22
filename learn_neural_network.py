@@ -2,22 +2,20 @@ import argparse
 import copy
 import json
 import logging
-import math
 import os
 from time import perf_counter
-from typing import List
 
 import torch
 from torch import Tensor, Generator
-from torch.nn import BCELoss, Module, MSELoss, Linear, ReLU, Sequential, Flatten
+from torch.nn import BCELoss, MSELoss
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 
 from mvu.dataset.loader import getDatasetSplits
-from mvu.dataset.meta import ImageDatasetMeta
 from mvu.logger import setupLogging
+from mvu.model.loader import createRegressorFromJson
 from mvu.model.regressor import NeuralNetworkRegressor
-from mvu.model.specialized.image import ImageRegressor
+from mvu.util import jsonOrString
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -45,10 +43,11 @@ if __name__ == '__main__':
 
     # model parameters
     parser.add_argument("--input", type=str, default=None, help='Input model to continue training')
-    parser.add_argument("--architecture", type=str, default=None, help='Neural network architecture to use')
+    parser.add_argument("--architecture", type=jsonOrString, default=None,
+                        help='Neural network architecture to use')
+    # TODO: ditch layers, its part of architecture now
     parser.add_argument("--layers", type=int, nargs='*', default=[],
                         help="Sizes of each linear layer in the model")
-    # TODO: other layer types?
 
     args = parser.parse_args()
 
@@ -74,28 +73,11 @@ if __name__ == '__main__':
         # ensure the feature index is set, don't want to accidentally retrain with fewer features
         model.setFeatureIndex(-1)
     elif args.architecture is not None:
-        if args.architecture == "image_regression":
-            if isinstance(ds.metadata, ImageDatasetMeta):
-                logging.info(f"Using Image Regressor architecture with {ds.metadata.channels} channels, "
-                             f"{ds.metadata.imageSize} image size and {len(ds.metadata.target)} outputs")
-                model = NeuralNetworkRegressor(
-                    ImageRegressor(ds.metadata.channels, ds.metadata.imageSize, len(ds.metadata.target))
-                )
-            else:
-                raise ValueError("image-regression requires the dataset metadata to also be image metadata")
-        else:
-            raise ValueError(f"Unknown neural network architecture {args.architecture}")
+        model = createRegressorFromJson(ds, args.architecture)
     else:
-        lastSize = ds.metadata.numInputs
-        logging.info(f"Constructing model with input size {lastSize} and hidden layers {args.layers}")
-        components: List[Module] = []
-        for layer in args.layers:
-            components.append(Linear(lastSize, layer))
-            components.append(ReLU())
-            lastSize = layer
-        components.append(Linear(lastSize, 1))
-        components.append(Flatten(start_dim=0))
-        model = NeuralNetworkRegressor(Sequential(*components))
+        logging.warning("Using deprecated layers argument")
+        model = createRegressorFromJson(ds, args.layers)
+
     logging.info(f"Network has {sum(p.numel() for p in model.nn.parameters() if p.requires_grad)} parameters")
 
     # other setup

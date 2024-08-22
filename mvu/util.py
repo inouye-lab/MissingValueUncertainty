@@ -1,6 +1,9 @@
+import json
+from json import JSONDecodeError
+from typing import Union, Dict, List
+
 import torch
 from torch import Tensor
-from torch.distributions import Normal
 from torch.utils.data import DataLoader
 
 from .model.regressor import Regressor
@@ -42,3 +45,16 @@ def gaussianLogLikelihood(squaredError: Tensor, var: Tensor) -> Tensor:
     clampVar = var.clamp(min=1e-10)
     return -0.5 * torch.log(torch.mul(2 * torch.pi, clampVar))\
         - 0.5 / clampVar * squaredError
+
+
+def jsonOrString(value: str) -> Union[int, str, Dict, List]:
+    """
+    Parses the value as JSON, if failing returns it as a raw string.
+    Used to avoid the need to double quote string fallbacks.
+    :param value:  Value to parse
+    :return:   Json value parsed, falling back to the raw string value.
+    """
+    try:
+        return json.loads(value)
+    except JSONDecodeError:
+        return str(value)
