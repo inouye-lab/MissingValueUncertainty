@@ -135,6 +135,7 @@ if __name__ == '__main__':
 
     # setup experiments
     methods: List[Method] = []
+    torch.manual_seed(args.seed)
     rand = Generator()
     rand.manual_seed(args.seed)
 
@@ -247,6 +248,7 @@ if __name__ == '__main__':
         # regardless of thread count)
         seeds = torch.randint(0, 0x7fffffff, (2,), generator=rand)  # max is just 32-bit signed int max
         for method in methods:
+            # TODO: per method batch size?
             dropFeatures = DataLoader(FeatureCountRemovingDataset(
                 ds.test, ds.metadata, numToDrop, torch.Generator().manual_seed(seeds[0].item())
             ), batch_size=args.method_batch, shuffle=False, pin_memory=True)

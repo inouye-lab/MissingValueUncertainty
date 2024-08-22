@@ -20,7 +20,12 @@ experiment() {
 #experiment insurance ridge "20231109-003853"
 #experiment elevators ridge "20231109-003851"
 
-experiment abalone nn "20231116-220802"
-experiment delta_ailerons nn "20231116-221117"
-experiment insurance nn "20231116-221525"
+#experiment abalone nn "20231116-220802"
+#experiment delta_ailerons nn "20231116-221117"
+#experiment insurance nn "20231116-221525"
 experiment elevators nn "20231116-221149"
+
+#experiment abalone nn "20231117-142431"
+#experiment delta_ailerons nn "20231117-142547"
+#experiment insurance nn "20231117-144151"
+#experiment elevators nn "20231117-142718"

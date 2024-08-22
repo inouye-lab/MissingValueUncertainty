@@ -287,6 +287,8 @@ class MarginalGaussianDistribution(Imputator, Distribution):
                 return MultivariateNormal(missingMean, covariance_matrix=missingCov).sample(torch.Size((distSamples,)))
             except ValueError:
                 logging.warning(f"Cannot sample {self.name} for index {sampleIndex} in PyTorch, falling back to Numpy.")
+        else:
+            logging.warning(f"Sampling {self.name} for index {sampleIndex} in Numpy.")
         return torch.tensor(
             self._local.generator.multivariate_normal(missingMean.cpu().numpy(), missingCov.cpu().numpy(), distSamples),
             device=sample.device, dtype=torch.float

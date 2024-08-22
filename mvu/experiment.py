@@ -134,6 +134,8 @@ class Experiment:
         except BaseException as e:
             batchEnd = perf_counter()
             time = batchEnd - batchStart
+            # display debug on the exception, but don't propagate it, allows other batches to run if needed
+            # TODO: perhaps add a "batch failure patience" to automatically kill an experiment if too many batches fail
             handleException(type(e), e, e.__traceback__,
                             message=f"Failed to process {self.experimentName}{details} in {time} seconds")
             return time
@@ -202,6 +204,7 @@ class Experiment:
                           "were processed.")
 
         # start by writing the summary row
+        # TODO: does this need to handle devices for item?
         avgMissingVariance = self.missingVariance / self.processedSamples
         summaryCsv.writerow([
             self.method.name, missing, self.time,
