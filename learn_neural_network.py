@@ -9,7 +9,7 @@ from typing import List
 
 import torch
 from torch import Tensor, Generator
-from torch.nn import Module, MSELoss, Linear, ReLU, Sequential, Flatten
+from torch.nn import BCELoss, Module, MSELoss, Linear, ReLU, Sequential, Flatten
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 
@@ -40,6 +40,8 @@ if __name__ == '__main__':
                         help='How often to validate the model during training iteration')
     parser.add_argument('--patience', type=int, default=2,
                         help='Number of times validation can get worse before stopping training')
+    parser.add_argument("--classification", action='store_true',
+                        help="If set, runs in classification mode.")
 
     # model parameters
     parser.add_argument("--input", type=str, default=None, help='Input model to continue training')
@@ -97,7 +99,7 @@ if __name__ == '__main__':
     logging.info(f"Network has {sum(p.numel() for p in model.nn.parameters() if p.requires_grad)} parameters")
 
     # other setup
-    lossFunction = MSELoss()
+    lossFunction = BCELoss() if args.classification else MSELoss()
     optimizer = Adam(model.nn.parameters(), lr=args.learning_rate)
 
     # device setup
@@ -112,11 +114,9 @@ if __name__ == '__main__':
     testLoader = DataLoader(ds.test, batch_size=args.batch_size, shuffle=False, generator=rand)
 
     # evaluate the initial model
-    errorHistory: List[Tensor] = []
     model.nn.eval()
-    trainingAccuracy = model.evaluateDataloader(dataLoader, device)
-    logging.info(f"Initial training error: {trainingAccuracy}")
-    errorHistory.append(trainingAccuracy)
+    trainingAccuracy = model.evaluateDataloader(dataLoader, device, args.classification)
+    logging.info(f"Initial training error {trainingAccuracy.mean().item()}:\n{trainingAccuracy}")
 
     # start training
     logging.info("Starting network learning")
@@ -148,7 +148,7 @@ if __name__ == '__main__':
                   end="\r")
 
         logging.info(f"{args.name} iteration {i + 1}/{args.training_iterations} in "
-                     f"{perf_counter() - iterationStart:.5f} seconds - error: {totalLoss / len(dataLoader)}")
+                     f"{perf_counter() - iterationStart:.5f} seconds - error: {totalLoss / numBatches}")
 
         # if this is the new best model, store it
         if i % args.validate_every == 0 or i == numBatches - 1:
@@ -156,19 +156,19 @@ if __name__ == '__main__':
             model.nn.eval()
 
             # FIXME: there is probably a better way to compare multiple variables
-            validationError = model.evaluateDataloader(validateLoader, device)
-            validationErrorSum = validationError.sum().item()
-            if validationErrorSum >= validationBest:
-                logging.info(f"Worsening on valid: {validationError}, {validationErrorSum} > prev best {validationBest}")
+            validationError = model.evaluateDataloader(validateLoader, device, args.classification)
+            validationErrorMean = validationError.mean().item()
+            if validationErrorMean > validationBest:
+                logging.info(f"Worsening on valid {validationErrorMean} > prev best {validationBest}:\n{validationError}")
                 if validationFails >= args.patience:
                     logging.info(f"Exceeding patience {args.patience}, stopping training")
                     break
                 else:
                     validationFails += 1
             else:
-                logging.info(f'Found new best model with error {validationError}')
+                logging.info(f'Found new best model with error {validationErrorMean} < prev best {validationBest}:\n{validationError}')
                 bestParams = copy.deepcopy(model.nn.state_dict())
-                validationBest = validationErrorSum
+                validationBest = validationErrorMean
                 validationFails = 0
 
     # restore best model
@@ -202,4 +202,4 @@ if __name__ == '__main__':
 
     # final evaluation of the model (done after saving as we don't need the result to save, and it might be slow)
     model.nn.to(device)
-    model.evaluateDataLoaders(dataLoader, validateLoader, testLoader, device)
+    model.evaluateDataLoaders(dataLoader, validateLoader, testLoader, device, args.classification, "BCE" if args.classification else "MSE")

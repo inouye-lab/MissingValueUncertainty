@@ -44,11 +44,13 @@ class Regressor(SerializerMixin, ABC):
         return torch.mean((predicted - dataset.targets) ** 2)
 
     @torch.no_grad()
-    def evaluateDataloader(self, data: DataLoader, device: torch.device = None) -> Tensor:
+    def evaluateDataloader(self, data: DataLoader, device: torch.device = None, classification: bool = True
+                           ) -> Tensor:
         """
         Evaluates the model on the given dataset and logs the final MSE
         :param data:   Data to evaluate
         :param device: Device to use for computation
+        :param classification:  If true, uses BCE loss for evaluation instead of MSE
         :return:  Mean squared error for the dataset
         """
         squaredError: Optional[Tensor] = None
@@ -63,7 +65,10 @@ class Regressor(SerializerMixin, ABC):
             if squaredError is None:
                 squaredError = torch.zeros(size=(targets.shape[1],), device=device)
             predicted = self.predict(features)
-            squaredError += ((predicted - targets) ** 2).sum(axis=0)
+            if classification:
+                squaredError += -(targets * torch.log(predicted) + (1 - targets) * torch.log(1 - predicted)).sum(axis=0)
+            else:
+                squaredError += ((predicted - targets) ** 2).sum(axis=0)
             seenSamples += targets.shape[0]
             print(f"Evaluating regressor batch {batchIndex + 1}/{totalBatches}", end="\r")
         # this only happens if we have no data
@@ -81,18 +86,20 @@ class Regressor(SerializerMixin, ABC):
         logging.info(f"MSE for validate: {self.evaluateDataset(ds.validate)}")
         logging.info(f"MSE for test: {self.evaluateDataset(ds.test)}")
 
-    def evaluateDataLoaders(self, train: DataLoader, validate: DataLoader, test: DataLoader, device: torch.device = None
-                            ) -> None:
+    def evaluateDataLoaders(self, train: DataLoader, validate: DataLoader, test: DataLoader,
+                            device: torch.device = None, classification: bool = False, label: str = "MSE") -> None:
         """
         Evaluates the model on the given dataset splits and logs the final MSE
         :param train:    Loader for training data
         :param validate: Loader for validation data
         :param test:     Loader for testing data
+        :param classification:  If true, uses BCE loss for evaluation instead of MSE
+        :param label:    Label for output printing
         :param device:   Device to use for computation
         """
-        logging.info(f"MSE for train: {self.evaluateDataloader(train, device)}")
-        logging.info(f"MSE for validate: {self.evaluateDataloader(validate, device)}")
-        logging.info(f"MSE for test: {self.evaluateDataloader(test, device)}")
+        for (name, loader) in [("train", train), ("validate", validate), ("test", test)]:
+            result = self.evaluateDataloader(loader, device, classification)
+            logging.info(f"{label} for {name} is {result.mean().item()}:\n{result}")
 
     def setFeatureIndex(self, featureIndex: int):
         """
