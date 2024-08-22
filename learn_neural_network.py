@@ -115,12 +115,12 @@ if __name__ == '__main__':
 
     # evaluate the initial model
     model.nn.eval()
-    trainingAccuracy = model.evaluateDataloader(dataLoader, device, args.classification)
-    logging.info(f"Initial training error {trainingAccuracy.mean().item()}:\n{trainingAccuracy}")
+    trainingAccuracy = model.evaluateDataloader(dataLoader, device, lossFunction)
+    logging.info(f"Initial training error {trainingAccuracy.mean().item()}")
 
-    validationError = model.evaluateDataloader(validateLoader, device, args.classification)
+    validationError = model.evaluateDataloader(validateLoader, device, lossFunction)
     validationBest = validationError.mean().item()
-    logging.info(f"Initial validation error {validationError.mean().item()}:\n{validationError}")
+    logging.info(f"Initial validation error {validationError.mean().item()}")
 
     # start training
     logging.info("Starting network learning")
@@ -163,21 +163,21 @@ if __name__ == '__main__':
             logging.info(f"Saving model at iteration {i+1} to {outputPath}")
             model.save(outputPath)
 
-            trainingAccuracy = model.evaluateDataloader(dataLoader, device, args.classification)
-            logging.info(f"Training error in evaluate mode {trainingAccuracy.mean().item()}:\n{trainingAccuracy}")
+            trainingAccuracy = model.evaluateDataloader(dataLoader, device, lossFunction)
+            logging.info(f"Training error in evaluate mode {trainingAccuracy.mean().item()}")
 
             # FIXME: there is probably a better way to compare multiple variables
-            validationError = model.evaluateDataloader(validateLoader, device, args.classification)
+            validationError = model.evaluateDataloader(validateLoader, device, lossFunction)
             validationErrorMean = validationError.mean().item()
             if validationErrorMean > validationBest:
-                logging.info(f"Worsening on valid {validationErrorMean} > prev best {validationBest}:\n{validationError}")
+                logging.info(f"Worsening on valid {validationErrorMean} > prev best {validationBest}")
                 if validationFails >= args.patience:
                     logging.info(f"Exceeding patience {args.patience}, stopping training")
                     break
                 else:
                     validationFails += 1
             else:
-                logging.info(f'Found new best model with error {validationErrorMean} < prev best {validationBest}:\n{validationError}')
+                logging.info(f'Found new best model with error {validationErrorMean} < prev best {validationBest}')
                 bestParams = copy.deepcopy(model.nn.state_dict())
                 validationBest = validationErrorMean
                 validationFails = 0
@@ -213,4 +213,4 @@ if __name__ == '__main__':
 
     # final evaluation of the model (done after saving as we don't need the result to save, and it might be slow)
     model.nn.to(device)
-    model.evaluateDataLoaders(dataLoader, validateLoader, testLoader, device, args.classification, "BCE" if args.classification else "MSE")
+    model.evaluateDataLoaders(dataLoader, validateLoader, testLoader, device, lossFunction, "BCE" if args.classification else "MSE")

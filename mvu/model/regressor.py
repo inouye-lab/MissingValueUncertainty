@@ -7,7 +7,7 @@ import torch
 from overrides import override
 from sklearn.linear_model import Ridge
 from torch import Tensor
-from torch.nn import Module
+from torch.nn import Module, MSELoss
 from torch.utils.data import DataLoader
 
 from ..dataset.csv import CsvDataset, CsvDatasetSplits
@@ -44,16 +44,18 @@ class Regressor(SerializerMixin, ABC):
         return torch.mean((predicted - dataset.targets) ** 2)
 
     @torch.no_grad()
-    def evaluateDataloader(self, data: DataLoader, device: torch.device = None, classification: bool = True
+    def evaluateDataloader(self, data: DataLoader, device: torch.device = None, lossFunction: callable = None
                            ) -> Tensor:
         """
         Evaluates the model on the given dataset and logs the final MSE
         :param data:   Data to evaluate
         :param device: Device to use for computation
-        :param classification:  If true, uses BCE loss for evaluation instead of MSE
+        :param lossFunction: Loss function, taking parameters of prediction and targets
         :return:  Mean squared error for the dataset
         """
-        squaredError: Optional[Tensor] = None
+        if lossFunction is None:
+            lossFunction = MSELoss()
+        totalLoss = 0
         seenSamples = 0
         totalBatches = len(data)
         startTime = perf_counter()
@@ -61,21 +63,17 @@ class Regressor(SerializerMixin, ABC):
             if device is not None:
                 features = features.to(device)
                 targets = targets.to(device)
-            # cannot do this outside the loop as we don't know the number of targets yet
-            if squaredError is None:
-                squaredError = torch.zeros(size=(targets.shape[1],), device=device)
             predicted = self.predict(features)
-            if classification:
-                squaredError += -(targets * torch.log(predicted) + (1 - targets) * torch.log(1 - predicted)).sum(axis=0)
-            else:
-                squaredError += ((predicted - targets) ** 2).sum(axis=0)
+            # TODO: bring back per feature loss? would need a custom loss function and to ditch the item call here
+            # might at that point want multiple loss function support
+            totalLoss += lossFunction(predicted, targets).item()
             seenSamples += targets.shape[0]
             print(f"Evaluating regressor batch {batchIndex + 1}/{totalBatches}", end="\r")
         # this only happens if we have no data
         if totalBatches == 0:
             return torch.tensor([0])
         logging.info(f"Evaluated regressor with data loader in {perf_counter() - startTime:.5f} seconds")
-        return (squaredError / seenSamples).cpu()
+        return torch.tensor([totalLoss / totalBatches])
 
     def evaluateSplits(self, ds: CsvDatasetSplits) -> None:
         """
@@ -87,18 +85,20 @@ class Regressor(SerializerMixin, ABC):
         logging.info(f"MSE for test: {self.evaluateDataset(ds.test)}")
 
     def evaluateDataLoaders(self, train: DataLoader, validate: DataLoader, test: DataLoader,
-                            device: torch.device = None, classification: bool = False, label: str = "MSE") -> None:
+                            device: torch.device = None, lossFunction: callable = None, label: str = "MSE") -> None:
         """
         Evaluates the model on the given dataset splits and logs the final MSE
         :param train:    Loader for training data
         :param validate: Loader for validation data
         :param test:     Loader for testing data
-        :param classification:  If true, uses BCE loss for evaluation instead of MSE
+        :param lossFunction: Loss function, taking parameters of prediction and targets
         :param label:    Label for output printing
         :param device:   Device to use for computation
         """
+        if lossFunction is None:
+            lossFunction = MSELoss()
         for (name, loader) in [("train", train), ("validate", validate), ("test", test)]:
-            result = self.evaluateDataloader(loader, device, classification)
+            result = self.evaluateDataloader(loader, device, lossFunction)
             logging.info(f"{label} for {name} is {result.mean().item()}:\n{result}")
 
     def setFeatureIndex(self, featureIndex: int):
@@ -168,4 +168,3 @@ class NeuralNetworkRegressor(Regressor):
     @override
     def to(self, device: torch.device):
         self.nn.to(device)
-
