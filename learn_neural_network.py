@@ -118,10 +118,13 @@ if __name__ == '__main__':
     trainingAccuracy = model.evaluateDataloader(dataLoader, device, args.classification)
     logging.info(f"Initial training error {trainingAccuracy.mean().item()}:\n{trainingAccuracy}")
 
+    validationError = model.evaluateDataloader(validateLoader, device, args.classification)
+    validationBest = validationError.mean().item()
+    logging.info(f"Initial validation error {validationError.mean().item()}:\n{validationError}")
+
     # start training
     logging.info("Starting network learning")
     startTime = perf_counter()
-    validationBest = math.inf
     bestParams = copy.deepcopy(model.nn.state_dict())
     validationFails = 0
 
@@ -154,6 +157,14 @@ if __name__ == '__main__':
         if i % args.validate_every == 0 or i == numBatches - 1:
             logging.info(f"Evaluating the model via validation data")
             model.nn.eval()
+
+            # save a copy of the model so far
+            outputPath = os.path.join(outputFolder, f"{args.name}-{date}-{i+1}.pklz")
+            logging.info(f"Saving model at iteration {i+1} to {outputPath}")
+            model.save(outputPath)
+
+            trainingAccuracy = model.evaluateDataloader(dataLoader, device, args.classification)
+            logging.info(f"Training error in evaluate mode {trainingAccuracy.mean().item()}:\n{trainingAccuracy}")
 
             # FIXME: there is probably a better way to compare multiple variables
             validationError = model.evaluateDataloader(validateLoader, device, args.classification)
