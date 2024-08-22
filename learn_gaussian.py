@@ -19,6 +19,8 @@ if __name__ == '__main__':
     parser.add_argument("--batch_size", type=int, default=100,
                         help="Number of samples to use in a batch for computing the gaussian covariance")
     parser.add_argument('-v', '--verbose', type=int, nargs='?', default=1, help='Logging verbosity level')
+    parser.add_argument("--difference_method", action='store_true',
+                        help="If set, uses E[XX^T]-E[X]E[X]^T. If unset, uses E[(X-E[X])(X-E[X])^T].")
     parser.add_argument("--force_cpu", action='store_true',
                         help="If set, forces using the CPU for calculations instead of the GPU.")
 
@@ -39,7 +41,7 @@ if __name__ == '__main__':
     startTime = perf_counter()
     gaussian = GaussianParameters.fromDataloader(
         ds.metadata.numInputs, DataLoader(ds.train, batch_size=args.batch_size, shuffle=False),
-        showProgress=True, device=device
+        showProgress=True, device=device, differenceMethod=args.difference_method
     ).cpu()
     endTime = perf_counter()
     logging.info(f"Finished learning gaussian after {endTime - startTime} seconds")

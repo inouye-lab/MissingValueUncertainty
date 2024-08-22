@@ -117,13 +117,16 @@ class GaussianParameters(SerializerMixin):
         )
 
     @classmethod
-    def fromDataloader(cls, numInputs: int, data: DataLoader, showProgress: bool = False, device: torch.device = None):
+    def fromDataloader(cls, numInputs: int, data: DataLoader, showProgress: bool = False, device: torch.device = None,
+                       differenceMethod: bool = False):
         """
         Creates an instance from a data loader (requires processing samples in batches)
         :param numInputs:    Number of input features
         :param data:         Data loader to use in creating the parameters
         :param showProgress: If true, prints regular updates on progress
         :param device:       Device to use for computing the mean and variance, and the resulting parameter device
+        :param differenceMethod: If true, uses the difference method `E[XX^T]-E[X]E[X]^T`. If unset, uses
+                                 `E[(X-E[X])(X-E[X])^T]`. Mathematically they are the same but stability may change.
         :return  Distribution instance on the passed device
         """
         # need the means to compute the covariances
@@ -148,9 +151,14 @@ class GaussianParameters(SerializerMixin):
                 print(f"Computing covariance batch {i+1:10}/{batches}", end="\r")
             if device is not None:
                 features = features.to(device)
-            diffVector = features - means
-            covariance += torch.matmul(diffVector.T, diffVector)
+            if differenceMethod:
+                covariance += torch.matmul(features.T, features)
+            else:
+                diffVector = features - means
+                covariance += torch.matmul(diffVector.T, diffVector)
         covariance /= numSamples
+        if differenceMethod:
+            covariance += torch.outer(means, means)
         logging.info(f"Computed gaussian covariance")
 
         # create the final distribution
