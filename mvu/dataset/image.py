@@ -1,5 +1,5 @@
 import os.path
-from typing import List
+from typing import List, Optional
 
 from PIL import Image
 import torch
@@ -36,12 +36,24 @@ class ImagePathDataset(Dataset[Tensor]):
     paths: List[str]
     """List of image paths in this dataset"""
 
-    def __init__(self, root: str, paths: List[str] = None):
+    def __init__(self, root: str, paths: Optional[List[str]] = None, fileList: Optional[str] = None):
+        """
+        Creates the image path dataset
+        :param root:       Root folder
+        :param paths:      List of paths within the folder for images. If none will load from all folder contents.
+        :param fileList:   Path to a file containing the paths list.
+        """
         super().__init__()
         self.root = root
         # if not given a list of paths, fetch all paths from the folder
         if paths is not None:
+            assert fileList is None, "Cannot set both paths and fileList"
             self.paths = paths
+        elif fileList is not None:
+            with open(fileList, 'r') as f:
+                # can't use f.readlines() as it preserves the trailing newlines, we want to trim them
+                # thus its more memory efficient to use the iterator
+                self.paths = [line.strip() for line in f]
         else:
             self.paths = []
             for path in os.listdir(root):

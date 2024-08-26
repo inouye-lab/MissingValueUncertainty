@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 
 import torch
 from overrides import override
@@ -72,8 +72,9 @@ class CelebADataset(Dataset[Tuple[Tensor, Tensor]]):
     indices: List[int]
     """Mapping from a dataset index to a attrbiute index"""
 
-    def __init__(self, attributes: CelebAttributes, imagesRoot: str, images: List[str] = None):
-        self.images = ImagePathDataset(imagesRoot, images)
+    def __init__(self, attributes: CelebAttributes, imagesRoot: str,
+                 images: Optional[List[str]] = None, imageList: Optional[str] = None):
+        self.images = ImagePathDataset(imagesRoot, images, imageList)
         assert len(self.images) > 0, f"Found no images at path {imagesRoot}"
         self.attributes = attributes
         self.indices = [int(s[:-4]) for s in self.images.paths]
@@ -89,9 +90,20 @@ class CelebADataset(Dataset[Tuple[Tensor, Tensor]]):
         return self.images[item], self.attributes[self.indices[item]].float()
 
 
-def createCelebADataset(attributes_path: str, images_root: str,
-                        train_folder: str, validation_folder: str, test_folder: str,
-                        image_size: int = 256, sensor_size: int = 1) -> TorchDatasetSplits:
+def _inRoot(root: Optional[str], folder: Optional[str]) -> Optional[str]:
+    if root is None:
+        return None
+    if folder is None:
+        return root
+    return os.path.join(root, folder)
+
+
+def createCelebADataset(attributes_path: str, images_root: str, lists_root: Optional[str] = None,
+                        *args,
+                        image_size: int = 256, sensor_size: int = 1,
+                        train_folder: str = None,      train_list: str = "train_shuffled.flist",
+                        validation_folder: str = None, validation_list: str = "val_shuffled.flist",
+                        test_folder: str = None,       test_list: str = "test_shuffled.flist") -> TorchDatasetSplits:
     """Loads in the CelebA dataset using the passed paths"""
 
     attributes = CelebAttributes(attributes_path)
@@ -100,9 +112,9 @@ def createCelebADataset(attributes_path: str, images_root: str,
     meta = ImageDatasetMeta("CelebA", attributes.names, image_size, sensor_size, 3)
 
     # setup image folders
-    train = CelebADataset(attributes, os.path.join(images_root, train_folder))
-    validate = CelebADataset(attributes, os.path.join(images_root, validation_folder))
-    test = CelebADataset(attributes, os.path.join(images_root, test_folder))
+    train = CelebADataset(attributes, _inRoot(images_root, train_folder), imageList=_inRoot(lists_root, train_list))
+    validate = CelebADataset(attributes, _inRoot(images_root, validation_folder), imageList=_inRoot(lists_root, validation_list))
+    test = CelebADataset(attributes, _inRoot(images_root, test_folder), imageList=_inRoot(lists_root, test_list))
     logging.info(f"Loading {len(train)} training images, {len(validate)} validation images, and {len(test)} testing images")
 
     return TorchDatasetSplits(train, validate, test, meta)
