@@ -1,0 +1,3 @@
+[submodule "CoPaint"]
+	path = CoPaint
+	url = https://github.com/UCSB-NLP-Chang/CoPaint
