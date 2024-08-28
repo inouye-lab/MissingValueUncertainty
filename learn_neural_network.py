@@ -40,6 +40,8 @@ if __name__ == '__main__':
                         help='Number of times validation can get worse before stopping training')
     parser.add_argument("--classification", action='store_true',
                         help="If set, runs in classification mode.")
+    parser.add_argument("--evaluate_training", action='store_true',
+                        help="If set, training accuracy is logged during validation. Useful for debugging patience.")
 
     # model parameters
     parser.add_argument("--input", type=str, default=None, help='Input model to continue training')
@@ -97,8 +99,9 @@ if __name__ == '__main__':
 
     # evaluate the initial model
     model.nn.eval()
-    trainingAccuracy = model.evaluateDataloader(dataLoader, device, lossFunction)
-    logging.info(f"Initial training error {trainingAccuracy.mean().item()}")
+    if args.evaluate_training:
+        trainingAccuracy = model.evaluateDataloader(dataLoader, device, lossFunction)
+        logging.info(f"Initial training error {trainingAccuracy.mean().item()}")
 
     validationError = model.evaluateDataloader(validateLoader, device, lossFunction)
     validationBest = validationError.mean().item()
@@ -145,8 +148,9 @@ if __name__ == '__main__':
             logging.info(f"Saving model at iteration {i+1} to {outputPath}")
             model.save(outputPath)
 
-            trainingAccuracy = model.evaluateDataloader(dataLoader, device, lossFunction)
-            logging.info(f"Training error in evaluate mode {trainingAccuracy.mean().item()}")
+            if args.evaluate_training:
+                trainingAccuracy = model.evaluateDataloader(dataLoader, device, lossFunction)
+                logging.info(f"Training error in evaluate mode {trainingAccuracy.mean().item()}")
 
             # FIXME: there is probably a better way to compare multiple variables
             validationError = model.evaluateDataloader(validateLoader, device, lossFunction)
