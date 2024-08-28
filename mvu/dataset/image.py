@@ -6,24 +6,19 @@ import torch
 from overrides import override
 from torch import Tensor
 from torch.utils.data import Dataset
-from torchvision.transforms import ToTensor
+from torchvision.transforms.functional import to_tensor
 
-
-__to_tensor = ToTensor()
 
 def load_image(path) -> Tensor:
     """
-    Opens the image at the given path as a numpy array.
-    Based on code from https://github.com/UCLA-StarAI/Tiramisu/blob/main/controlled_img_modeling/data/base.py#L30-L37.
+    Opens the image at the given path as a Torch tensor with pixel values on [-1, 1].
     :param path:  Path to the image.
     :return:  Image loaded as a tensor.
     """
     image = Image.open(path)
     if not image.mode == "RGB":
         image = image.convert("RGB")
-    image = __to_tensor(image).to(torch.uint8)
-    image = (image / 127.5 - 1.0).to(torch.float32)
-    return image
+    return (to_tensor(image).to(torch.float32) * 2) - 1
 
 
 class ImagePathDataset(Dataset[Tensor]):
