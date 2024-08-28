@@ -139,7 +139,7 @@ if __name__ == '__main__':
                      f"{perf_counter() - iterationStart:.5f} seconds - error: {totalLoss / numBatches}")
 
         # if this is the new best model, store it
-        if i % args.validate_every == 0 or i == numBatches - 1:
+        if i % args.validate_every == 0 or (i+1) == numBatches:
             logging.info(f"Evaluating the model via validation data")
             model.nn.eval()
 

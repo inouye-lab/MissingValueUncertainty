@@ -35,7 +35,7 @@ class SpecificFeatureRemovingDataset(DatasetWrapper[TwoTensor]):
     """
 
     featuresToDrop: Tensor
-    """Base dataset being wrapped"""
+    """Tensor of features to drop"""
 
     def __init__(self, base: Dataset[TwoTensor], featuresToDrop: Tensor):
         super().__init__(base)
@@ -44,7 +44,6 @@ class SpecificFeatureRemovingDataset(DatasetWrapper[TwoTensor]):
     def __getitem__(self, item) -> Tuple[Tensor, Tensor]:
         features, targets = self.base[item]
         features = features.clone()
-        # TODO: is this the correct indexing?
         features[self.featuresToDrop] = torch.nan
         return features, targets
 

@@ -18,6 +18,8 @@ def load_image(path) -> Tensor:
     image = Image.open(path)
     if not image.mode == "RGB":
         image = image.convert("RGB")
+    # to_tensor transforms the image to a pixel value range of [0,1]
+    # however the models we are based on a range of [-1,1]
     return (to_tensor(image).to(torch.float32) * 2) - 1
 
 
