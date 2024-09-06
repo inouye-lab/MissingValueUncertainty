@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Union
 
 import torch
 from overrides import override
@@ -70,13 +70,23 @@ class CelebADataset(Dataset[Tuple[Tensor, Tensor]]):
     attributes: CelebAttributes
     """Attributes tensor"""
     indices: List[int]
-    """Mapping from a dataset index to a attrbiute index"""
+    """Mapping from a dataset index to a attribute index"""
+    returnIndex: bool
+    """
+    If true, returns the index alongside the image and the attributes.
+    The index should generally be considered hidden information from the model,
+    however the index may be useful for caches alongside the input data.
+    """
 
     def __init__(self, attributes: CelebAttributes, imagesRoot: str,
-                 images: Optional[List[str]] = None, imageList: Optional[str] = None):
+                 images: Optional[List[str]] = None, imageList: Optional[str] = None,
+                 returnIndex: bool = False):
         self.images = ImagePathDataset(imagesRoot, images, imageList)
         assert len(self.images) > 0, f"Found no images at path {imagesRoot}"
         self.attributes = attributes
+        self.returnIndex = returnIndex
+        # TODO: generalize this to other file extensions?
+        # TODO: move this to image.py?
         self.indices = [int(s[:-4]) for s in self.images.paths]
         samplesWithAttributes = len(self.attributes)
         for idx in self.indices:
@@ -86,8 +96,13 @@ class CelebADataset(Dataset[Tuple[Tensor, Tensor]]):
         return len(self.indices)
 
     @override
-    def __getitem__(self, item) -> Tuple[Tensor, Tensor]:
-        return self.images[item], self.attributes[self.indices[item]].float()
+    def __getitem__(self, item) -> Union[Tuple[Tensor, Tensor], Tuple[Tensor, Tensor, int]]:
+        # image index, used for fetching attribute value
+        # note due to splits/shuffling this won't match item
+        index = self.indices[item]
+        if self.returnIndex:
+            return self.images[item], self.attributes[index].float(), index
+        return self.images[item], self.attributes[index].float()
 
 
 def _inRoot(root: Optional[str], folder: Optional[str]) -> Optional[str]:
@@ -103,7 +118,8 @@ def createCelebADataset(attributes_path: str, images_root: str, lists_root: Opti
                         image_size: int = 256, sensor_size: int = 1,
                         train_folder: str = None,      train_list: str = "train_shuffled.flist",
                         validation_folder: str = None, validation_list: str = "val_shuffled.flist",
-                        test_folder: str = None,       test_list: str = "test_shuffled.flist") -> TorchDatasetSplits:
+                        test_folder: str = None,       test_list: str = "test_shuffled.flist",
+                        return_index: bool = False) -> TorchDatasetSplits:
     """Loads in the CelebA dataset using the passed paths"""
 
     attributes = CelebAttributes(attributes_path)
@@ -112,9 +128,12 @@ def createCelebADataset(attributes_path: str, images_root: str, lists_root: Opti
     meta = ImageDatasetMeta("CelebA", attributes.names, image_size, sensor_size, 3)
 
     # setup image folders
-    train = CelebADataset(attributes, _inRoot(images_root, train_folder), imageList=_inRoot(lists_root, train_list))
-    validate = CelebADataset(attributes, _inRoot(images_root, validation_folder), imageList=_inRoot(lists_root, validation_list))
-    test = CelebADataset(attributes, _inRoot(images_root, test_folder), imageList=_inRoot(lists_root, test_list))
+    train = CelebADataset(attributes, _inRoot(images_root, train_folder),
+                          imageList=_inRoot(lists_root, train_list), returnIndex=return_index)
+    validate = CelebADataset(attributes, _inRoot(images_root, validation_folder),
+                             imageList=_inRoot(lists_root, validation_list), returnIndex=return_index)
+    test = CelebADataset(attributes, _inRoot(images_root, test_folder),
+                         imageList=_inRoot(lists_root, test_list), returnIndex=return_index)
     logging.info(f"Loading {len(train)} training images, {len(validate)} validation images, and {len(test)} testing images")
 
     return TorchDatasetSplits(train, validate, test, meta)
