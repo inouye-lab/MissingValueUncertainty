@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Tuple, TypeVar, Generic, Dict
+from typing import Tuple, TypeVar, Generic, Dict, Optional
 
 import torch
 from overrides import override
@@ -7,6 +7,7 @@ from torch import Tensor, Generator
 from torch.utils.data import DataLoader
 
 from .distribution import Distribution
+from .generator import BatchGenerator
 from .imputator import Imputator
 from .regressor import Regressor
 from ..dataset.csv import CsvDataset
@@ -240,3 +241,41 @@ class MonteCarloMethod(Method):
         # finally, return our two results
         return torch.mean(predictions, dim=1).reshape(-1), \
             torch.var(predictions, dim=1).reshape(-1)
+
+
+class MonteCarloBatchMethod(Method):
+    regressor: Regressor
+    generator: BatchGenerator
+    samples: int
+    """Number of Monte Carlo samples to take"""
+
+    def __init__(self, regressor: Regressor, generator: BatchGenerator, samples: int):
+        self.regressor = regressor
+        self.generator = generator
+        self.samples = samples
+
+    @property
+    @override
+    def name(self) -> str:
+        return f"Monte Carlo - {self.generator.name} - {self.samples} samples"
+
+    @override
+    def predictWithUncertainty(self, features: Tensor, rand: Generator = None, index: int = None
+                               ) -> Tuple[Tensor, Tensor]:
+        featureSamples = features.shape[INDEX_SAMPLE]
+        means: Optional[Tensor] = None
+        variances: Optional[Tensor] = None
+
+        for fIdx in range(features.shape[INDEX_SAMPLE]):
+            batch = self.generator.createBatch(features[fIdx], self.samples, index, rand)
+            prediction = self.regressor.predict(batch)
+            # we don't know the output size without running the regressor, so lazily init the output tensors
+            if means is None:
+                means = torch.empty((featureSamples, *prediction.shape[1:]), device=features.device)
+            if variances is None:
+                variances = torch.empty((featureSamples, *prediction.shape[1:]), device=features.device)
+            # fill in output from the prediction
+            means[fIdx, :] = prediction.mean(dim=0)
+            variances[fIdx, :] = prediction.var(dim=0)
+
+        return means, variances
