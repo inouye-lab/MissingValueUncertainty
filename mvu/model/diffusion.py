@@ -16,6 +16,7 @@ from CoPaint.utils.config import Config
 from .method import Method
 from .regressor import Regressor
 from ..dataset.meta import INDEX_SAMPLE
+from ..serializer import loadValue, saveValue
 
 SAMPLER_CLS = {
     "repaint": SpacedDiffusion,
@@ -40,10 +41,6 @@ class GaussianDiffusionMethod(Method):
     """Number of Monte Carlo samples to take"""
     diffusion_batch: int
     """Number of images to sample from the diffusion model at once"""
-    diffusion_batches: int
-    """Number of batches needed to get all samples from diffusion"""
-    last_diffusion_batch: int
-    """Size of the final batch for diffusion, in case samples is not divisible by diffusion_batch"""
 
     conf: Config
     """CoPaint config instance"""
@@ -56,15 +53,15 @@ class GaussianDiffusionMethod(Method):
     model_fn: callable
     """Model function for passing into the sampler"""
 
-    def __init__(self, regressor: Regressor, samples: int, diffusion_batch: int = None,
+    def __init__(self, regressor: Regressor, samples: int,
+                 *args,  # want the rest to only be named arguments
+                 diffusion_batch: int = None,
                  config_file: str = "CoPaint/configs/celebahq.yaml",
                  device: Optional[torch.device] = None,
                  **kwargs):
         self.regressor = regressor
         self.samples = samples
         self.diffusion_batch = diffusion_batch if diffusion_batch is not None else samples
-        self.diffusion_batches = self.samples // self.diffusion_batch
-        self.last_diffusion_batch = self.samples % self.diffusion_batch
 
         self.conf = Config(default_config_file=config_file, default_config_dict=kwargs, use_argparse=False)
         self.image_size = self.conf["image_size"]
@@ -99,14 +96,20 @@ class GaussianDiffusionMethod(Method):
     def name(self) -> str:
         return "CoPaint Imputator"
 
-    def createBatch(self, image: Tensor, rand: Generator = None) -> Tensor:
+    def createBatch(self, image: Tensor, rand: Generator = None, index: int = None, samples: int = None) -> Tensor:
         """
         Creates a batch of images for the given passed image
         :param image:   Original image
         :param rand:    Random state
-        :return:  Batch of images based on self.samples
+        :param index:   Index of the sample, for use in caching results. If none then no cache is possible
+        :param samples: Number of samples to take. If unset, fetches from the class fields
+        :return:  Batch of images based on samples
         """
-        batch = image.repeat(self.samples, 1, 1, 1)
+        if samples is None:
+            samples = self.samples
+        batch = image.repeat(samples, 1, 1, 1)
+        diffusion_batches = samples // self.diffusion_batch
+        last_diffusion_batch = samples % self.diffusion_batch
 
         # sample diffusion model
         missing = torch.isnan(image)
@@ -118,8 +121,7 @@ class GaussianDiffusionMethod(Method):
             "gt": image.repeat(self.diffusion_batch, 1, 1, 1),
             "gt_keep_mask": mask.repeat(self.diffusion_batch, 1, 1, 1),
         }
-        print("Repeated ", model_kwargs["gt"].shape, model_kwargs["gt_keep_mask"].shape)
-        for bIdx in range(self.diffusion_batches):
+        for bIdx in range(diffusion_batches):
             # TODO: how do I use the generator here for seeding?
             result = self.sampler.p_sample_loop(
                 self.model_fn,
@@ -135,14 +137,14 @@ class GaussianDiffusionMethod(Method):
             startIdx = bIdx * self.diffusion_batch
             batch[startIdx:(startIdx + self.diffusion_batch), missing] = result["sample"][:, missing]
         # its possible our batches don't divide evenly, so just sample the last one on its own
-        if self.last_diffusion_batch != 0:
+        if last_diffusion_batch != 0:
             model_kwargs = {
-                "gt": image.repeat(self.last_diffusion_batch, 1, 1, 1),
-                "gt_keep_mask": mask.repeat(self.last_diffusion_batch, 1, 1, 1),
+                "gt": image.repeat(last_diffusion_batch, 1, 1, 1),
+                "gt_keep_mask": mask.repeat(last_diffusion_batch, 1, 1, 1),
             }
             result = self.sampler.p_sample_loop(
                 self.model_fn,
-                shape=(self.last_diffusion_batch, 3, self.image_size, self.image_size),
+                shape=(last_diffusion_batch, 3, self.image_size, self.image_size),
                 model_kwargs=model_kwargs,
                 cond_fn=None,
                 device=image.device,
@@ -151,18 +153,19 @@ class GaussianDiffusionMethod(Method):
                 conf=self.conf,
                 sample_dir=None,
             )
-            startIdx = self.diffusion_batches * self.diffusion_batch
-            batch[startIdx:(startIdx + self.last_diffusion_batch), missing] = result["sample"][:, missing]
+            startIdx = diffusion_batches * self.diffusion_batch
+            batch[startIdx:(startIdx + last_diffusion_batch), missing] = result["sample"][:, missing]
         return batch
 
     @override
-    def predictWithUncertainty(self, features: Tensor, rand: Generator = None) -> Tuple[Tensor, Tensor]:
+    def predictWithUncertainty(self, features: Tensor, rand: Generator = None, index: int = None
+                               ) -> Tuple[Tensor, Tensor]:
         featureSamples = features.shape[INDEX_SAMPLE]
         means: Optional[Tensor] = None
         variances: Optional[Tensor] = None
 
         for fIdx in range(features.shape[INDEX_SAMPLE]):
-            batch = self.createBatch(features[fIdx], rand)
+            batch = self.createBatch(features[fIdx], rand, index)
             prediction = self.regressor.predict(batch)
             # we don't know the output size without running the regressor, so lazily init the output tensors
             if means is None:
@@ -174,3 +177,60 @@ class GaussianDiffusionMethod(Method):
             variances[fIdx, :] = prediction.var(dim=0)
 
         return means, variances
+
+
+class CachedGaussianDiffusionMethod(GaussianDiffusionMethod):
+    cachePath: str
+    """Path to the folder containing the cached batches"""
+    cacheMask: Tensor
+    """Mask used for the cache, important it matches for the index to be valid"""
+
+    def __init__(self, regressor: Regressor, samples: int, cache_path: str, cache_mask: Tensor,
+                 device: Optional[torch.device] = None, **kwargs):
+        super().__init__(regressor, samples, device=device, **kwargs)
+        self.cachePath = cache_path
+        self.cacheMask = cache_mask.to(device)
+        # ensure the sample directory exists
+        os.makedirs(self.cachePath, exist_ok=True)
+        # ensure the mask in the sample directory matches the mask passed, if not this directory will cause issues
+        maskPath = os.path.join(self.cachePath, "mask.pklz")
+        if os.path.exists(maskPath):
+            directoryMask = loadValue(maskPath, Tensor)
+            assert torch.equal(cache_mask.cpu(), directoryMask), \
+                f"Directory mask mismatches: passed {self.cacheMask}, but directory contains {directoryMask}"
+        else:
+            # if the directory lacks a mask, it is probably new, so just save our mask
+            saveValue(cache_mask.cpu(), maskPath, Tensor)
+
+    @override
+    def createBatch(self, image: Tensor, rand: Generator = None, index: int = None, samples: int = None) -> Tensor:
+        if samples is None:
+            samples = self.samples
+        if index is None:
+            logging.info("No sample index passed, skipping cache.")
+        elif not torch.equal(self.cacheMask, torch.isnan(image)):
+            logging.error(f"Image {index} mask does not match the method's mask, unable to use cache")
+        else:
+            # caching is possible, do we have a cached value?
+            batchPath = os.path.join(self.cachePath, f"{index}.pklz")
+            if not os.path.exists(batchPath):
+                logging.info(f"No cache found for sample {index}, generating new batch.")
+            else:
+                # cache is valid, use that
+                cached = loadValue(batchPath, Tensor).to(image.device)
+                if cached.shape[0] >= samples:
+                    # note the cache may contain more samples than requested, that is fine, just take the number requested
+                    # means it was created with a different variant of this method
+                    # TODO: consider random indexing instead?
+                    return cached[0:samples]
+                neededSamples = samples - cached.shape[0]
+                logging.info(f"Image {index} only has {cached.shape[0]} cached samples, computing {neededSamples} additional samples")
+                batch = super().createBatch(image, rand, index, samples - cached.shape[0])
+                # combine the two sets and cache the larger number of samples
+                batch = torch.cat((cached, batch), dim=0)
+                saveValue(batch.cpu(), batchPath, Tensor)
+                # no need to index, size is calculated exactly
+                return batch
+        batch = super().createBatch(image, rand, index, samples)
+        saveValue(batch.cpu(), batchPath, Tensor)
+        return batch
