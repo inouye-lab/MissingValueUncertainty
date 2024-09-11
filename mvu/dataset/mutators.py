@@ -1,11 +1,11 @@
 import torch
-from typing import TypeVar, Tuple
+from typing import TypeVar, Tuple, Optional
 
 from overrides import override
 from torch import Tensor, Generator
 from torch.utils.data import Dataset
 
-from mvu.dataset.meta import DatasetMeta
+from mvu.dataset.meta import DatasetMeta, ImageDatasetMeta
 
 T_co = TypeVar('T_co', covariant=True)
 
@@ -82,3 +82,31 @@ class FeatureCountRemovingDataset(DatasetWrapper[T_co]):
             # not supported in python 3.6
             return (features, *data[1:])
         return data
+
+
+def createMask(meta: Optional[DatasetMeta], name: str, image_size: int = None, channels: int = None) -> Tensor:
+    """
+    Creates a boolean image mask for use in SpecificFeatureRemovingDataset
+    :param meta:         Dataset meta, for populating unset arguments
+    :param name:         Mask name, determines which region of the image is missing
+    :param image_size:   Size of the image, if none pulls from meta
+    :param channels:     Number of channels for the image, if none pulls from meta
+    :return:  Boolean tensor mask
+    """
+    if image_size is None or channels is None:
+        assert isinstance(meta, ImageDatasetMeta)
+        if image_size is None:
+            image_size = meta.imageSize
+        if channels is None:
+            channels = meta.channels
+
+    mask = torch.zeros((channels, image_size, image_size), dtype=torch.bool)
+    if name == "top":
+        mask[:, 0:image_size // 2, :] = True
+    elif name == "bottom":
+        mask[:, image_size // 2:image_size, :] = True
+
+    else:
+        raise ValueError(f"Unknown mask name '{name}'")
+
+    return mask

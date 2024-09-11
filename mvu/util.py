@@ -61,6 +61,19 @@ def jsonOrString(value: str) -> Union[int, str, Dict, List]:
         return str(value)
 
 
+def jsonOrName(value: str) -> Dict:
+    """
+    Parses the value as JSON, if failing returns it as a dict with a key "name".
+    Used to avoid the need to double quote string fallbacks.
+    :param value:  Value to parse
+    :return:   Json value parsed, falling back to the raw string value.
+    """
+    try:
+        return json.loads(value)
+    except JSONDecodeError:
+        return {"name": str(value)}
+
+
 def selectDevice(cuda_index: int) -> device:
     """
     Selects the device using the given index

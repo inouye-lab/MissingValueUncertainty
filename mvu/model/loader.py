@@ -1,8 +1,11 @@
+import json
 import logging
 from typing import List, Union, Dict
 
 from torch.nn import Linear, ReLU, Flatten, Sequential, Module
 
+from .diffusion import GaussianDiffusionBatchGenerator
+from .generator import BatchGenerator
 from .regressor import NeuralNetworkRegressor
 from .specialized.resnet import Resnet18Classifier
 from .specialized.image import ImageRegressor
@@ -63,3 +66,16 @@ def createRegressorFromJson(ds: TorchDatasetSplits, value: Union[str, List, Dict
     if isinstance(value, list):
         return createRegressor(ds, name="simple_fully_connected", layers=value)
     return createRegressor(ds, name=value)
+
+
+def createBatchGenerator(name: str, **kwargs) -> BatchGenerator:
+    """
+    Creates a new batch generator instance using the given method
+    :param name:     Generator name
+    :param kwargs:   Other generator arguments
+    :return:  generator instance
+    """
+    if name == "gaussian-diffusion":
+        return GaussianDiffusionBatchGenerator(**kwargs)
+
+    raise ValueError(f"Unknown generator type '{name}'")
