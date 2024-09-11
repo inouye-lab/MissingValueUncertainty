@@ -1,6 +1,7 @@
 import logging
 import os
 from abc import ABC, abstractmethod
+from typing import Optional
 
 import torch
 from overrides import override
@@ -38,26 +39,30 @@ class CachingBatchGenerator(BatchGenerator):
     random state for the generator when working with caching generators.
     """
 
-    generator: BatchGenerator
-    """Nested generator to cache contents from"""
+    generator: Optional[BatchGenerator]
+    """Nested generator to cache contents from. If none, uses just the cache and throws if no cache value."""
     cachePath: str
     """Path to the folder containing the cached batches"""
     cacheMask: Tensor
     """Mask used for the cache, important it matches for the index to be valid"""
 
-    def __init__(self, generator: BatchGenerator, cache_path: str, cache_mask: Tensor):
+    def __init__(self, generator: Optional[BatchGenerator], cache_path: str, cache_mask: Tensor):
         self.generator = generator
         self.cachePath = cache_path
         self.cacheMask = cache_mask
 
         # ensure the sample directory exists
-        os.makedirs(self.cachePath, exist_ok=True)
+        if generator is not None:
+            os.makedirs(self.cachePath, exist_ok=True)
         # ensure the mask in the sample directory matches the mask passed, if not this directory will cause issues
         maskPath = os.path.join(self.cachePath, "mask.pklz")
         if os.path.exists(maskPath):
             directoryMask = loadValue(maskPath, Tensor)
             assert torch.equal(cache_mask.cpu(), directoryMask), \
                 f"Directory mask mismatches: passed {self.cacheMask}, but directory contains {directoryMask}"
+        elif generator is None:
+            # if no generator, then an missing mask means we passed the wrong cache path
+            raise ValueError(f"No generator cache found at {cache_path}, unable to create without generator")
         else:
             # if the directory lacks a mask, it is probably new, so just save our mask
             saveValue(cache_mask.cpu(), maskPath, Tensor)
@@ -65,18 +70,24 @@ class CachingBatchGenerator(BatchGenerator):
     @property
     @override
     def name(self) -> str:
+        if self.generator is None:
+            return f"Cache from {self.cachePath}"
         return f"Caching {self.generator.name}"
 
     @override
     def createBatch(self, image: Tensor, samples: int, index: int = None, rand: Generator = None) -> Tensor:
         if index is None:
+            assert self.generator is not None, "Must pass index to use caching generator without generator."
             logging.info("No sample index passed, skipping cache.")
         elif not torch.equal(self.cacheMask, torch.isnan(image)):
+            assert self.generator is not None, f"Image {index} must match cache mask to use without generator"
             logging.error(f"Image {index} mask does not match the method's mask, unable to use cache")
         else:
             # caching is possible, do we have a cached value?
             batchPath = os.path.join(self.cachePath, f"{index}.pklz")
             if not os.path.exists(batchPath):
+                if self.generator is None:
+                    raise ValueError(f"No cache found for sample {index}.")
                 logging.info(f"No cache found for sample {index}, generating new batch.")
             else:
                 # cache is valid, use that
@@ -86,9 +97,13 @@ class CachingBatchGenerator(BatchGenerator):
                     # means it was created with a different variant of this method
                     # TODO: consider random indexing instead?
                     return cached[0:samples]
+                # if unable to generate, throw
+                if self.generator is None:
+                    raise ValueError(f"Requested {samples} samples for {index}, but cache only contains {cached.shape[0]}")
+
                 neededSamples = samples - cached.shape[0]
-                logging.info(
-                    f"Image {index} only has {cached.shape[0]} cached samples, computing {neededSamples} additional samples")
+                logging.info(f"Image {index} only has {cached.shape[0]} cached samples, "
+                             f"computing {neededSamples} additional samples")
                 batch = self.generator.createBatch(image, samples - cached.shape[0], index, rand)
                 # combine the two sets and cache the larger number of samples
                 batch = torch.cat((cached, batch), dim=0)
