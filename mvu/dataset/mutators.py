@@ -43,9 +43,11 @@ class SpecificFeatureRemovingDataset(DatasetWrapper[T_co]):
     @override
     def __getitem__(self, item) -> Tuple[Tensor, ...]:
         data = self.base[item]
-        data[0] = data[0].clone()
-        data[0][self.featuresToDrop] = torch.nan
-        return data
+        features = data[0].clone()
+        features[self.featuresToDrop] = torch.nan
+        # noinspection PyRedundantParentheses
+        # not supported in python 3.6
+        return (features, *data[1:])
 
 
 class FeatureCountRemovingDataset(DatasetWrapper[T_co]):
@@ -74,6 +76,9 @@ class FeatureCountRemovingDataset(DatasetWrapper[T_co]):
     def __getitem__(self, item) -> Tuple[Tensor, ...]:
         data = self.base[item]
         if self.numToDrop > 0:
-            data[0] = data[0].clone()
-            data[0][self.metadata.sampleDropIndexes(self.numToDrop, rand=self.rand)] = torch.nan
+            features = data[0].clone()
+            features[self.metadata.sampleDropIndexes(self.numToDrop, rand=self.rand)] = torch.nan
+            # noinspection PyRedundantParentheses
+            # not supported in python 3.6
+            return (features, *data[1:])
         return data
