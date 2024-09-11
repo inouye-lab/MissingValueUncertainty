@@ -7,7 +7,7 @@ from time import perf_counter
 from typing import List, Optional, TextIO
 
 import torch
-from torch import Generator, Tensor
+from torch import Generator
 from torch.utils.data import DataLoader, Subset, Dataset, TensorDataset
 
 from mvu.dataset.loader import getDatasetSplits
@@ -20,7 +20,7 @@ from mvu.model.method import Method, BasicCombinationMethod, EmpiricalUncertaint
     MonteCarloMethod
 from mvu.dataset.mutators import SpecificFeatureRemovingDataset, FeatureCountRemovingDataset
 from mvu.model.regressor import Regressor
-from mvu.util import estimateResidual
+from mvu.util import estimateResidual, selectDevice
 from mvu.threading import distributeTasks
 
 if __name__ == '__main__':
@@ -101,17 +101,7 @@ if __name__ == '__main__':
     regressor.setFeatureIndex(args.regressor_feature)
 
     # device setup
-    if args.cuda_index >= 0 and torch.cuda.is_available():
-        device = torch.device("cuda", index=args.cuda_index)
-        logging.info(f"Using {device} for tensor calculations")
-        # PyTorch lazy loads some of its modules which causes issues when in both GPU and threading if we happen to
-        # try and load it on multiple threads at the same time. Workaround by using it before we dispatch.
-        # see https://github.com/pytorch/pytorch/issues/90613 for more info
-        torch.inverse(torch.ones((1, 1), device=device))
-    else:
-        device = torch.device("cpu")
-        # we log whether CUDA is available to make it more clear if it was not an option or force disabled
-        logging.info(f"Using {device} for tensor calculations, cuda available: {torch.cuda.is_available()}")
+    device = selectDevice(args.cuda_index)
     regressor.to(device)
 
     # load in dataset

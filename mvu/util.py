@@ -1,9 +1,10 @@
 import json
+import logging
 from json import JSONDecodeError
 from typing import Union, Dict, List
 
 import torch
-from torch import Tensor
+from torch import Tensor, device
 from torch.utils.data import DataLoader
 
 from .model.regressor import Regressor
@@ -58,3 +59,24 @@ def jsonOrString(value: str) -> Union[int, str, Dict, List]:
         return json.loads(value)
     except JSONDecodeError:
         return str(value)
+
+
+def selectDevice(cuda_index: int) -> device:
+    """
+    Selects the device using the given index
+    :param cuda_index:  Device index for GPU
+    :return:
+    """
+    if cuda_index >= 0 and torch.cuda.is_available():
+        device = torch.device("cuda", index=cuda_index)
+        logging.info(f"Using {device} for tensor calculations")
+        # PyTorch lazy loads some of its modules which causes issues when in both GPU and threading if we happen to
+        # try and load it on multiple threads at the same time. Workaround by using it before we dispatch.
+        # see https://github.com/pytorch/pytorch/issues/90613 for more info
+        torch.inverse(torch.ones((1, 1), device=device))
+    else:
+        device = torch.device("cpu")
+        # we log whether CUDA is available to make it more clear if it was not an option or force disabled
+        logging.info(f"Using {device} for tensor calculations, cuda available: {torch.cuda.is_available()}")
+
+    return device
