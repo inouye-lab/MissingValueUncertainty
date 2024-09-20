@@ -1,4 +1,6 @@
 #!/bin/bash
+# Script to setup the splits for the CelebA dataset.
+# This has already been done and committed so likely won't need to be run again unless you are curious about the process.
 
 OUTPUT="datasets/celeba"
 COPAINT_SPLITS="CoPaint/datasets/lama_split"

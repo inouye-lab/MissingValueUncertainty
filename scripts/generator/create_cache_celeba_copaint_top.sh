@@ -1,5 +1,5 @@
 #!/bin/bash
-# Loads in all relevant datasets
+# Generates the image cache for the CelebA dataset using the CoPaint diffusion model with the top mask
 source ../../miniconda/bin/activate
 conda activate ./venv
 

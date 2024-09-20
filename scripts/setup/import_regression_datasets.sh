@@ -1,5 +1,5 @@
 #!/bin/bash
-# Loads in all relevant datasets
+# Loads in all relevant tabular regression datasets.
 source ../../miniconda/bin/activate
 conda activate ./venv
 
