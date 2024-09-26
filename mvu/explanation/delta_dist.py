@@ -4,10 +4,14 @@ from typing import Union
 import torch
 from overrides import override
 from torch import Tensor
-from torch.distributions import Distribution, Normal, constraints
+from torch.distributions import Distribution, constraints
 
 
 class DeltaDistribution(Distribution):
+    """
+    This class implements a "Distribution" which has a fixed mean and 0 variance. It allows generalizing our code to
+    support any Torch distribution without needing to special case setups without uncertainty.
+    """
     arg_constraints = {"loc": constraints.real}
     support = constraints.real
     has_rsample = True
@@ -15,6 +19,11 @@ class DeltaDistribution(Distribution):
     zeros: Tensor
 
     def __init__(self, loc: Union[Tensor, Number], validate_args=None):
+        """
+        Creates a new instance of this distribution
+        :param loc:            Mean value for the distribution
+        :param validate_args:  If false, disables argument validation.
+        """
         if isinstance(loc, Number):
             self.loc = torch.tensor(loc)
             batch_shape = torch.Size()
