@@ -12,13 +12,14 @@ from numpy import random
 from torch.distributions import MultivariateNormal
 from torch.utils.data import DataLoader
 
+from .generator import BatchGenerator
 from .imputator import containsMissing, Imputator
 from ..dataset.csv import CsvDataset
 from ..dataset.meta import validateFeatures, INDEX_SAMPLE, INDEX_FEATURE, DatasetMeta
 from ..serializer import SerializerMixin
 
 
-class Distribution(ABC):
+class Distribution(BatchGenerator, ABC):
     """
     Class representing a distribution for the sake of Monte Carlo Methods.
     Implementers will also often implement `Imputator` to support distribution based imputation.
@@ -55,6 +56,8 @@ class Distribution(ABC):
             augmentedFeatures[sampleIndex, :, :] = sample.reshape(1, 1, -1).expand(-1, distSamples, -1)
             # If no missing indexes, no need to handle samples
             if torch.count_nonzero(missingIndexes) > 0:
+                # TODO: does this work for multi-dimensional images?
+                augmentedFeatures[sampleIndex, :, missingIndexes] = self._sampleDistribution(sample, distSamples, rand, sampleIndex)
                 augmentedFeatures[sampleIndex, :, missingIndexes] = self._sampleDistribution(sample, distSamples, rand, sampleIndex)
 
                 # we should have filled in all nan values in the final array
@@ -70,6 +73,12 @@ class Distribution(ABC):
         """
         pass
 
+    @override
+    def createBatch(self, image: Tensor, samples: int, index: int = None, rand: Generator = None) -> Tensor:
+        batch = image.repeat(samples, *([1]*len(image.shape)))
+        batch[:, torch.isnan(image)] = self._sampleDistribution(image, samples, rand=rand)
+        return batch
+
     @abstractmethod
     def _sampleDistribution(self, sample: Tensor, distSamples: int, rand: Generator = None, sampleIndex: int = -1
                             ) -> Tensor:
@@ -79,8 +88,9 @@ class Distribution(ABC):
         :param distSamples:  Number of samples of this distribution to take
         :param rand:         Random state
         :param sampleIndex:  Index of the current sample, for debug
-        :return:  Matrix of size `(distSamples,features)`.
+        :return:  Matrix of size `(distSamples,MissingFeatures)`.
         """
+        # TODO: can this be merged into createBatch? difference is the semantic meaning of the index
         pass
 
     def _normalize(self, augmentedFeatures: Tensor) -> Tensor:
@@ -180,7 +190,7 @@ class GaussianParameters(SerializerMixin):
 class MarginalGaussianDistribution(Imputator, Distribution):
     """Distribution implementing a marginalized gaussian."""
 
-    datasetMeta: DatasetMeta
+    datasetMeta: Optional[DatasetMeta]
     """Metadata of the dataset for normalization"""
 
     params: GaussianParameters
@@ -193,8 +203,10 @@ class MarginalGaussianDistribution(Imputator, Distribution):
     Temporary generator used during sample generation as we are unable to use the torch multivariate normal
     """
 
-    def __init__(self, datasetMeta: DatasetMeta, params: GaussianParameters, forceNumpy: bool = False):
-        datasetMeta.validateFeatures(params.mean, isVector=True)
+    def __init__(self, datasetMeta: Optional[DatasetMeta], params: GaussianParameters, forceNumpy: bool = False):
+        # TODO: remove dependency on dataset meta? perhaps move it to a separate dataset distribution wrapper
+        if datasetMeta is not None:
+            datasetMeta.validateFeatures(params.mean, isVector=True)
         self.datasetMeta = datasetMeta
         self.params = params
         self.forceNumpy = forceNumpy
@@ -214,8 +226,14 @@ class MarginalGaussianDistribution(Imputator, Distribution):
         return self.params.covariance
 
     @override
-    def _validateFeatures(self, features: Tensor) -> None:
-        self.datasetMeta.validateFeatures(features)
+    def _validateFeatures(self, features: Tensor, isVector: bool = False) -> None:
+        if self.datasetMeta is not None:
+            self.datasetMeta.validateFeatures(features, isVector)
+
+    def _normalizeFeatures(self, features: Tensor, copy: bool = True):
+        if self.datasetMeta is not None:
+            return self.datasetMeta.normalizeFeatures(features, copy)
+        return features
 
     def condition(self, vector: Tensor, returnCovariance: bool = True) -> Union[Tensor, Tuple[Tensor, Tensor]]:
         """
@@ -224,7 +242,7 @@ class MarginalGaussianDistribution(Imputator, Distribution):
         :param returnCovariance:  If true, returns the covariance matrix. If false, just return the mean vector.
         :return:  Mean vector of size `(features,)` and covariance matrix of size `(features, features)`
         """
-        self.datasetMeta.validateFeatures(vector, isVector=True)
+        self._validateFeatures(vector, isVector=True)
 
         # if no missing indexes, nothing to do
         missingMask = torch.isnan(vector)
@@ -266,7 +284,7 @@ class MarginalGaussianDistribution(Imputator, Distribution):
             missingIndexes = torch.isnan(image)
             if torch.count_nonzero(missingIndexes) > 0:
                 features[i, missingIndexes] = self.condition(image, returnCovariance=False)
-        self.datasetMeta.normalizeFeatures(features, copy=False)
+        self._normalizeFeatures(features, copy=False)
 
     @override
     def augment(self, features: Tensor, distSamples: int, rand: Generator = None) -> Tensor:
@@ -299,7 +317,7 @@ class MarginalGaussianDistribution(Imputator, Distribution):
         dataSamples = augmentedFeatures.shape[0]
         distSamples = augmentedFeatures.shape[1]
         features = augmentedFeatures.shape[2]
-        return self.datasetMeta.normalizeFeatures(
+        return self._normalizeFeatures(
             augmentedFeatures.reshape((dataSamples*distSamples, features)), copy=False
         ).reshape(dataSamples, distSamples, features)
 
@@ -324,7 +342,7 @@ class ConditionalGaussianDistribution(MarginalGaussianDistribution):
     Unused if `leastSquares` is True and not using `schur`.
     """
 
-    def __init__(self, datasetMeta: DatasetMeta, params: GaussianParameters, forceNumpy: bool = False,
+    def __init__(self, datasetMeta: Optional[DatasetMeta], params: GaussianParameters, forceNumpy: bool = False,
                  schur: Union[Tensor, bool] = False, leastSquares: bool = True, hermitian: bool = True):
 
         super().__init__(datasetMeta, params, forceNumpy=forceNumpy)
