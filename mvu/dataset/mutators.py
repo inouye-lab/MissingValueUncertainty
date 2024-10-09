@@ -36,15 +36,19 @@ class SpecificFeatureRemovingDataset(DatasetWrapper[T_co]):
     featuresToDrop: Tensor
     """Tensor of features to drop"""
 
-    def __init__(self, base: Dataset[T_co], featuresToDrop: Tensor):
+    missingValue: float
+    """Value to assign to the missing features"""
+
+    def __init__(self, base: Dataset[T_co], featuresToDrop: Tensor, missingValue: float = torch.nan):
         super().__init__(base)
         self.featuresToDrop = featuresToDrop
+        self.missingValue = missingValue
 
     @override
     def __getitem__(self, item) -> Tuple[Tensor, ...]:
         data = self.base[item]
         features = data[0].clone()
-        features[self.featuresToDrop] = torch.nan
+        features[self.featuresToDrop] = self.missingValue
         # noinspection PyRedundantParentheses
         # not supported in python 3.6
         return (features, *data[1:])

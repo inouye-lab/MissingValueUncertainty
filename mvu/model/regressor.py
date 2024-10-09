@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 
 from ..dataset.csv import CsvDataset, CsvDatasetSplits
 from ..serializer import SerializerMixin
+import sys
 
 
 class Regressor(SerializerMixin, ABC):
@@ -74,6 +75,43 @@ class Regressor(SerializerMixin, ABC):
             return torch.tensor([0])
         logging.info(f"Evaluated regressor with data loader in {perf_counter() - startTime:.5f} seconds")
         return torch.tensor([totalLoss / totalBatches])
+
+    @torch.no_grad()
+    def evaluateAccDataloader(self, data: DataLoader, device: torch.device = None, lossFunction: callable = None
+                           ) -> Tensor:
+        """
+        Evaluates the model on the given dataset and logs the final MSE
+        :param data:   Data to evaluate
+        :param device: Device to use for computation
+        :param lossFunction: Loss function, taking parameters of prediction and targets
+        :return:  Mean squared error for the dataset
+        """
+        if lossFunction is None:
+            lossFunction = MSELoss()
+        totalCorrect = 0
+        seenSamples = 0
+        totalBatches = len(data)
+        startTime = perf_counter()
+        for batchIndex, (features, targets) in enumerate(data):
+            if device is not None:
+                features = features.to(device)
+                targets = targets.to(device)
+            predicted = self.predict(features)
+            # TODO: bring back per feature loss? would need a custom loss function and to ditch the item call here
+            # might at that point want multiple loss function support
+            probabilities = torch.sigmoid(predicted) #activate if BCE loss with logits is used
+            predictions = (predicted > 0.5).float()
+            #print(f"The shape of prediction is: {predictions.shape}")
+            totalCorrect += (predictions == targets).sum().item()
+            #print(f"The shape of targets is: {targets.shape}")
+            seenSamples += targets.shape[0]*targets.shape[-1]
+            print(f"Evaluating regressor batch {batchIndex + 1}/{totalBatches}", end="\r")
+            #sys.exit()
+        # this only happens if we have no data
+        if totalBatches == 0:
+            return torch.tensor([0])
+        logging.info(f"Evaluated regressor with data loader in {perf_counter() - startTime:.5f} seconds")
+        return torch.tensor([totalCorrect / seenSamples])
 
     def evaluateSplits(self, ds: CsvDatasetSplits) -> None:
         """

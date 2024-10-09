@@ -6,16 +6,51 @@ import os
 from time import perf_counter
 
 import torch
+import sys
 from torch import Tensor, Generator
-from torch.nn import BCELoss, MSELoss
+from torch.nn import BCELoss, MSELoss, BCEWithLogitsLoss
 from torch.optim import Adam
-from torch.utils.data import DataLoader
+from torch.utils.data import TensorDataset, random_split, Dataset, DataLoader,ConcatDataset
 
 from mvu.dataset.loader import getDatasetSplits
 from mvu.logger import setupLogging
 from mvu.model.loader import createRegressorFromJson
 from mvu.model.regressor import NeuralNetworkRegressor
 from mvu.util import jsonOrString
+from mvu.dataset.mutators import createMask, SpecificFeatureRemovingDataset
+
+import wandb
+
+
+def split_dataset(dataset, n):
+    dataset_len = len(dataset)
+    part_len = dataset_len // n  # Base length of each part
+
+    # Create a list of lengths for each part
+    lengths = [part_len] * n  # Initially set all parts to the same length
+
+    # Adjust the last part to account for any remainder if the dataset is not divisible by n
+    remainder = dataset_len % n
+    for i in range(remainder):
+        lengths[i] += 1  # Distribute remainder across the first few parts
+
+    # Use random_split to split the dataset
+    subsets = random_split(dataset, lengths)
+
+    return subsets  # Return the n dataset objects
+
+def mask_split_dataset(split_Traindatasets, ds,args):
+    split_TransformedTraindatasets = []
+    for i, subset in enumerate(split_Traindatasets):
+        withMissing = subset
+        if args.mask[i] == "top":
+            mask = createMask(ds.metadata, "top")
+            withMissing = SpecificFeatureRemovingDataset(subset, mask, 0.0)
+        elif args.mask[i] == "bottom":
+            mask = createMask(ds.metadata, "bottom")
+            withMissing = SpecificFeatureRemovingDataset(subset, mask, 0.0)
+        split_TransformedTraindatasets.append(withMissing)
+    return split_TransformedTraindatasets
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -50,8 +85,18 @@ if __name__ == '__main__':
     # TODO: ditch layers, its part of architecture now
     parser.add_argument("--layers", type=int, nargs='*', default=[],
                         help="Sizes of each linear layer in the model")
+    # image processing
+    parser.add_argument("--mask", type=json.loads, default = json.loads('["full", "top", "bottom"]'), help="Name of the mask to use")
+    #WandB
+    parser.add_argument('--no_wandb', action='store_true', default=True)
+
 
     args = parser.parse_args()
+
+    ######  Weight and biases logging ############
+    if not(args.no_wandb):
+        wandb.init(project="MissingValueTesting", entity="sganguli")
+
 
     # start logging
     outputFolder = args.output
@@ -83,7 +128,8 @@ if __name__ == '__main__':
     logging.info(f"Network has {sum(p.numel() for p in model.nn.parameters() if p.requires_grad)} parameters")
 
     # other setup
-    lossFunction = BCELoss() if args.classification else MSELoss()
+    #lossFunction = BCELoss() if args.classification else MSELoss()
+    lossFunction = BCEWithLogitsLoss() if args.classification else MSELoss()
     optimizer = Adam(model.nn.parameters(), lr=args.learning_rate)
 
     # device setup
@@ -92,10 +138,56 @@ if __name__ == '__main__':
     model.to(device)
 
     # setup data loading
+    split_Traindatasets = split_dataset(ds.train, len(args.mask))
+    split_TransformedTraindatasets = mask_split_dataset(split_Traindatasets,ds,args)
+
+    # for i, subset in enumerate(split_Traindatasets):
+    #     if args.mask[i] == "full":
+    #         print("full")
+    #         withMissing = subset
+    #     elif args.mask[i] == "top":
+    #         print("top")
+    #         mask = createMask(ds.metadata, "top")
+    #         withMissing = SpecificFeatureRemovingDataset(subset, mask, 0.0)
+    #     else:
+    #         print("bottom")
+    #         mask = createMask(ds.metadata, "bottom")
+    #         withMissing = SpecificFeatureRemovingDataset(subset, mask, 0.0)
+    #     split_TransformedTraindatasets.append(withMissing)
+
+    combined_dataset = ConcatDataset(split_TransformedTraindatasets)
+    ds.train = combined_dataset # Train dataset with a mix of corrupted and non-corrupted images #Better to have a local variable
+
     dataLoader = DataLoader(ds.train, batch_size=args.batch_size, shuffle=True, generator=rand, pin_memory=True)
+
+
     # TODO: different batch size?
-    validateLoader = DataLoader(ds.validate, batch_size=args.batch_size, shuffle=False, generator=rand, pin_memory=True)
+    #validateLoader = DataLoader(ds.validate, batch_size=args.batch_size, shuffle=False, generator=rand, pin_memory=True)
+    split_Valdatasets = split_dataset(ds.validate, len(args.mask))
+    #split_TransformedValdatasets = []
+    split_TransformedValdatasets = mask_split_dataset(split_Valdatasets, ds, args)
+    # for i, subset in enumerate(split_Valdatasets):
+    #     if args.mask[i] == "full":
+    #         print("full")
+    #         withMissing = subset
+    #     elif args.mask[i] == "top":
+    #         print("top")
+    #         mask = createMask(ds.metadata, "top")
+    #         withMissing = SpecificFeatureRemovingDataset(subset, mask, 0)
+    #     else:
+    #         print("bottom")
+    #         mask = createMask(ds.metadata, "bottom")
+    #         withMissing = SpecificFeatureRemovingDataset(subset, mask, 0)
+    #     split_TransformedValdatasets.append(withMissing)
+
+    if len(args.mask) > 1:
+        combined_dataset = ConcatDataset(split_TransformedValdatasets)
+        split_TransformedValdatasets.append(combined_dataset)
+
+    validateLoader = [DataLoader(x, batch_size=args.batch_size, shuffle=False, generator=rand, pin_memory=True) for x in split_TransformedValdatasets] #Validate dataloader is a list
+
     testLoader = DataLoader(ds.test, batch_size=args.batch_size, shuffle=False, generator=rand)
+
 
     # evaluate the initial model
     model.nn.eval()
@@ -103,7 +195,7 @@ if __name__ == '__main__':
         trainingAccuracy = model.evaluateDataloader(dataLoader, device, lossFunction)
         logging.info(f"Initial training error {trainingAccuracy.mean().item()}")
 
-    validationError = model.evaluateDataloader(validateLoader, device, lossFunction)
+    validationError = model.evaluateDataloader(validateLoader[-1], device, lossFunction)
     validationBest = validationError.mean().item()
     logging.info(f"Initial validation error {validationError.mean().item()}")
 
@@ -114,7 +206,7 @@ if __name__ == '__main__':
     validationFails = 0
 
     numBatches = len(dataLoader)
-    for i in range(args.training_iterations):
+    for i in range(args.training_iterations): # This is the total number of epochs
         iterationStart = perf_counter()
         model.nn.train()
 
@@ -138,6 +230,46 @@ if __name__ == '__main__':
         logging.info(f"{args.name} iteration {i + 1}/{args.training_iterations} in "
                      f"{perf_counter() - iterationStart:.5f} seconds - error: {totalLoss / numBatches}")
 
+        model.nn.eval()
+        trainAccuracy = model.evaluateAccDataloader(dataLoader, device, lossFunction)
+        print(f"The trainAccuracy is: {trainAccuracy}")
+        trainAccuracyNet = trainAccuracy.mean().item()
+
+        trainingError = model.evaluateDataloader(dataLoader, device, lossFunction)
+        trainingErrorNet = trainingError.mean().item()
+
+        #wandb.log({"train_loss": trainingError, "val_loss": valError}, step=i)
+        wandb.log({"train_loss": trainingError, "train_accuracy": trainAccuracyNet}, step=i)
+
+        for index, y in enumerate(validateLoader):
+            valAccuracy = model.evaluateAccDataloader(y, device, lossFunction)
+            valAccuracyNet = valAccuracy.mean().item()
+
+            valError = model.evaluateDataloader(y, device, lossFunction)
+            valErrorNet = valError.mean().item()
+            if index == 0:
+                wandb.log({"val_full_accuracy": valAccuracyNet, "val_full_loss": valError}, step=i)
+            elif index == 1:
+                wandb.log({"val_top_accuracy": valAccuracyNet, "val_top_loss": valError}, step=i)
+            elif index == 2:
+                wandb.log({"val_bottom_accuracy": valAccuracyNet, "val_bottom_loss": valError}, step=i)
+            else:
+                wandb.log({"val_All_accuracy": valAccuracyNet, "val_All_loss": valError}, step=i)
+
+
+        #valAccuracy = model.evaluateAccDataloader(validateLoader, device, lossFunction)
+        # print(f"The valAccuracy is: {valAccuracy}")
+        # valAccuracyNet = valAccuracy.mean().item()
+        #
+        # valError = model.evaluateDataloader(validateLoader, device, lossFunction)
+        # valErrorNet = valError.mean().item()
+
+        print(f"The eopch count is: {i}")
+
+
+
+        #wandb.log({"train_accuracy": trainAccuracyNet, "val_accuracy": valAccuracyNet}, step=i)
+
         # if this is the new best model, store it
         if i % args.validate_every == 0 or (i+1) == numBatches:
             logging.info(f"Evaluating the model via validation data")
@@ -153,7 +285,7 @@ if __name__ == '__main__':
                 logging.info(f"Training error in evaluate mode {trainingAccuracy.mean().item()}")
 
             # FIXME: there is probably a better way to compare multiple variables
-            validationError = model.evaluateDataloader(validateLoader, device, lossFunction)
+            validationError = model.evaluateDataloader(validateLoader[-1], device, lossFunction)
             validationErrorMean = validationError.mean().item()
             if validationErrorMean > validationBest:
                 logging.info(f"Worsening on valid {validationErrorMean} > prev best {validationBest}")
@@ -200,3 +332,5 @@ if __name__ == '__main__':
     # final evaluation of the model (done after saving as we don't need the result to save, and it might be slow)
     model.nn.to(device)
     model.evaluateDataLoaders(dataLoader, validateLoader, testLoader, device, lossFunction, "BCE" if args.classification else "MSE")
+
+    wandb.finish()

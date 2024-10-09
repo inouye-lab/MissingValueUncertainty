@@ -41,6 +41,6 @@ class Resnet18Classifier(Module):
         # step 1: apply model
         features = self.resnet(features)
         # step 2: apply activation
-        features = self.activation(features)
+        #features = self.activation(features) #Deactivating to apply BCEwithLogitsLoss
         return features
 
