@@ -174,6 +174,25 @@ class GaussianParameters(SerializerMixin):
         # create the final distribution
         return cls(means, covariance)
 
+    @classmethod
+    def fromVarianceCorrelation(cls, mean: Tensor, variance: Tensor, correlation: Tensor) -> "GaussianParameters":
+        """
+        Creates gaussian parameters using a variance vector and a correlation matrix
+        :param mean:         Mean vector
+        :param variance:     Variance vector
+        :param correlation:  Correlation vector
+        :return:  Gaussian parameters
+        """
+        # transform the vector of sigma^2 into a diagonal matrix of sigma values
+        sigma = torch.diag(variance ** 0.5)
+        # multiply sigma on both sides of correlation
+        covariance = torch.matmul(torch.matmul(sigma, correlation), sigma)
+        # multiplication with floating point values may be imprecise, enforce symmetry using the triangle indices
+        size = len(variance)
+        i, j = torch.triu_indices(size, size, offset=1)
+        covariance.T[i, j] = covariance[i, j]
+        return cls(mean, covariance)
+
     def to(self, device: torch.device) -> "GaussianParameters":
         """
         Copies the parameters to the given device
