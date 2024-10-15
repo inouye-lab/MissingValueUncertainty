@@ -76,7 +76,9 @@ class Distribution(BatchGenerator, ABC):
     @override
     def createBatch(self, image: Tensor, samples: int, index: int = None, rand: Generator = None) -> Tensor:
         batch = image.repeat(samples, *([1]*len(image.shape)))
-        batch[:, torch.isnan(image)] = self._sampleDistribution(image, samples, rand=rand)
+        missingFeatures = torch.isnan(image)
+        if torch.count_nonzero(missingFeatures) > 0:
+            batch[:, missingFeatures] = self._sampleDistribution(image, samples, rand=rand)
         return batch
 
     @abstractmethod
