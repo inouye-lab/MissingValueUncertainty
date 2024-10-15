@@ -20,10 +20,10 @@ def estimateBetaParametersFromMoments(mean: Tensor, var: Tensor) -> Tuple[Tensor
     # indicates alpha and beta should be swapped for the given index
     swapped = torch.ge(var, upper).float()
     # the general formula for alpha is mean * common, while beta is (1-mean) * common
-    # since we want to swap alpha and beta based on swapped, we essentially need an offset and a sign
-    # alpha uses swapped and sign directly, while beta inverts them.
-    sign = 1 - (swapped * 2)
-    return (swapped + sign * mean) * common, (1 - swapped - sign * mean) * common
+    # since we want to swap alpha and beta based on swapped, but also want to negate the two, it works out nicely
+    # (mean-swapped) is either mean or (mean-1)=-(1-mean)
+    # (1-mean-swapped) is either (1-mean) or -mean
+    return (mean - swapped) * common, (1 - mean - swapped) * common
 
 
 def _toDistribution(mean: Tensor, var: Tensor, alpha: Tensor, beta: Tensor) -> Distribution:
