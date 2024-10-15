@@ -1,0 +1,36 @@
+import torch
+from torch import Tensor
+
+
+ZERO_ONE_ACTIONS = torch.tensor([0, 1])
+"""Zero-one action space, for a boolean input. Use with `zeroOneLoss`"""
+
+
+def zeroOneLoss(label, action) -> Tensor:
+    """
+    Basic zero-one loss function for a set of actions. Designed for binary but should work on larger spaces.
+    :param label:
+    :param action:
+    :return:
+    """
+    return torch.as_tensor(label != action, dtype=torch.float)
+
+
+ALEATORIC_ACTIONS = torch.tensor([0, 1, -1])
+"""Aleatoric action space, for a boolean input. Use with `createAleatoricLoss`"""
+
+
+def createAleatoricLoss(constantLoss: float = 0.25) -> callable:
+    """
+    Creates a loss function for a zero-one loss with a constant loss -1 action for aleatoric uncertainty.
+    Designed for binary but should work on larger spaces.
+    :param constantLoss:  Constant aleatoric action loss
+    :return: Loss function callable
+    """
+
+    def loss(label, action) -> Tensor:
+        action = torch.as_tensor(action)
+        # zero one loss, but a label of -1 has reduced penalty
+        # assuming label is never -1
+        return torch.ne(action, label).float() - (torch.eq(action, -1).float() * (1 - constantLoss))
+    return loss
