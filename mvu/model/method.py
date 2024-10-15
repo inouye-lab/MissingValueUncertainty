@@ -275,7 +275,7 @@ class MonteCarloBatchMethod(Method):
             if variances is None:
                 variances = torch.empty((featureSamples, *prediction.shape[1:]), device=features.device)
             # fill in output from the prediction
-            means[fIdx, :] = prediction.mean(dim=0)
-            variances[fIdx, :] = prediction.var(dim=0)
+            means[fIdx] = prediction.mean(dim=0)
+            variances[fIdx] = prediction.var(dim=0)
 
         return means, variances
