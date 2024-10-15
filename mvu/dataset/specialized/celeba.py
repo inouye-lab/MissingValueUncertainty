@@ -19,7 +19,7 @@ class CelebAttributes:
     attributes: Tensor
     """Boolean tensor mapping the index to the value for each key"""
 
-    def __init__(self, path: str):
+    def __init__(self, path: str, targets: List[str] = None):
         with open(path, 'r') as file:
             # first line is the row count
             rows = int(file.readline().strip())
@@ -55,11 +55,22 @@ class CelebAttributes:
             for i in range(rows):
                 assert seenIndices[i], f"Failed to parse attributes for index {i}"
 
+        if targets is not None:
+            assert len(targets) > 0, "Must have at least 1 target"
+            # python list.index will automatically validate that the target is actually in teh list
+            indices = [self.names.index(target) for target in targets]
+            self.attributes = self.attributes[:, indices]
+            self.names = targets
+
     def __len__(self):
         return self.attributes.shape[0]
 
     def __getitem__(self, item):
         return self.attributes[item]
+
+    def featureIndex(self, name: str) -> int:
+        """Gets the index of the given feature by name, or raises a ValueError if its not present"""
+        return self.names.index(name)
 
 
 class CelebADataset(Dataset[Tuple[Tensor, Tensor]]):
@@ -119,12 +130,11 @@ def createCelebADataset(attributes_path: str, images_root: str, lists_root: Opti
                         train_folder: str = None,      train_list: str = "train_shuffled.flist",
                         validation_folder: str = None, validation_list: str = "val_shuffled.flist",
                         test_folder: str = None,       test_list: str = "test_shuffled.flist",
-                        return_index: bool = False) -> TorchDatasetSplits:
+                        return_index: bool = False, targets: List[str] = None) -> TorchDatasetSplits:
     """Loads in the CelebA dataset using the passed paths"""
 
-    attributes = CelebAttributes(attributes_path)
+    attributes = CelebAttributes(attributes_path, targets=targets)
     logging.info(f"Found {len(attributes.names)} CelebA attributes for {len(attributes)} images: {attributes.names}")
-    # TODO: support filtering down targets to a smaller list
     meta = ImageDatasetMeta("CelebA", attributes.names, image_size, sensor_size, 3)
 
     # setup image folders
