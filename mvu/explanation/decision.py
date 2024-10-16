@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Tuple
+from typing import Tuple, Union, List
 
 import torch
 from torch import Tensor, Generator
@@ -59,6 +59,25 @@ def computeBestAction(phi: Tensor, lossFunction: callable, actions: Tensor) -> T
     assert len(bestIndex.shape) == 0
     # map the index back to an action, and get its probability
     return actions[bestIndex], bestCounts[bestIndex] / bestCounts.sum()
+
+
+def computeBestActions(phis: Union[List[Tensor], Tensor], lossFunction: callable, actions: Tensor
+                       ) -> Tuple[Tensor, Tensor]:
+    """
+    Computes a tensor of best actions for the given Phi
+    :param phis:           Iteratable where the first index is size inputSamples, and the second size distSamples
+    :param lossFunction:  Loss function, first parameter is the Y label (0 or 1) and second is the action tensor
+    :param actions:       Tensor of all possible actions
+    :return: Vector of actions and confidences of size inputSamples
+    """
+    inputSamples = len(phis)
+    bestActions = torch.empty((inputSamples,), dtype=torch.int)
+    confidences = torch.empty((inputSamples,), dtype=torch.float)
+    for i, phi in enumerate(phis):
+        action, confidence = computeBestAction(phi, lossFunction, actions)
+        bestActions[i] = action
+        confidences[i] = confidence
+    return bestActions, confidences
 
 
 def sampleBestAction(dist: Distribution, samples: int, lossFunction: callable, actions: Tensor

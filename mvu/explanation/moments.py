@@ -5,7 +5,7 @@ from overrides import override
 from torch import Tensor, Generator
 from torch.distributions import Distribution, Beta
 
-from .decision import DecisionMaker, computeBestAction
+from .decision import DecisionMaker, computeBestActions
 from .delta_dist import DeltaDistribution
 from ..model.method import Method
 
@@ -91,11 +91,5 @@ class MethodOfMomentsDecisionMaker(DecisionMaker):
         assert len(distributions) == inputSamples
         # TODO: not sure how to enforce the random state in torch distributions
         phis = [dist.sample(self.size) for dist in distributions]
-        bestActions = torch.empty((inputSamples,), dtype=torch.int)
-        confidences = torch.empty((inputSamples,), dtype=torch.float)
-        for i, phi in enumerate(phis):
-            action, confidence = computeBestAction(phi, lossFunction, actions)
-            bestActions[i] = action
-            confidences[i] = confidence
-        return bestActions, confidences
+        return computeBestActions(phis, lossFunction, actions)
 
