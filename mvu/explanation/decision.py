@@ -40,25 +40,28 @@ def sampleActionConfidence(dist: Distribution, samples: int, lossFunction: calla
     return computeActionConfidence(dist.sample(torch.Size((samples,))), lossFunction, action, actions)
 
 
-def computeBestAction(phi: Tensor, lossFunction: callable, actions: Tensor) -> Tuple[int, float]:
+def computeBestAction(phi: Tensor, lossFunction: callable, actions: Tensor) -> Tuple[Tensor, Tensor]:
     """
     Determines the best action for the given phi samples, actions, and loss function.
     :param phi:           Samples from the phi distribution
     :param lossFunction:  Loss function, first parameter is the Y label (0 or 1) and second is the action tensor
     :param actions:       Tensor of all possible actions
-    :return:  Best action, and the probability
+    :return:  Best action tensor, and the confidence tensor of that action
     """
-    bestAction = actions[0]
-    bestConfidence = 0
-    for action in actions:
-        confidence = computeActionConfidence(phi, lossFunction, action, actions)
-        if confidence > bestConfidence:
-            bestAction = action
-            bestConfidence = confidence
-    return int(bestAction), bestConfidence
+    # compute loss for each action, outer product makes dimensions [sampleIdx, actionIdx]
+    allLoss = torch.outer(phi, lossFunction(1, actions)) + torch.outer(1 - phi, lossFunction(0, actions))
+    # determine the number of times each action is the best using bincount
+    bestCounts = allLoss.min(axis=1).indices.bincount(minlength=actions.shape[0])
+    assert bestCounts.shape[0] == actions.shape[0]
+    # find which index is the best overall
+    bestIndex = bestCounts.max(dim=0).indices
+    assert len(bestIndex.shape) == 0
+    # map the index back to an action, and get its probability
+    return actions[bestIndex], bestCounts[bestIndex] / bestCounts.sum()
 
 
-def sampleBestAction(dist: Distribution, samples: int, lossFunction: callable, actions: Tensor) -> Tuple[int, float]:
+def sampleBestAction(dist: Distribution, samples: int, lossFunction: callable, actions: Tensor
+                     ) -> Tuple[Tensor, Tensor]:
     return computeBestAction(dist.sample(torch.Size((samples,))), lossFunction, actions)
 
 
