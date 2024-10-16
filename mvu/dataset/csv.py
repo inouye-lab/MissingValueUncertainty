@@ -156,7 +156,7 @@ def import_from_csv(name: str, csv: str, targetFeature: str,
     logging.info(f'Loaded {name} dataframe with shape: {df.shape} and columns {df.columns}')
 
     # start by fetching the labels
-    targets = torch.tensor(df[targetFeature].values)
+    targets = torch.tensor(df[targetFeature].values, dtype=torch.float)
 
     # start by dropping features we don't care about
     df = df[numericFeatures + categoricalFeatures]
@@ -194,7 +194,7 @@ def import_from_csv(name: str, csv: str, targetFeature: str,
     logging.info(f'After preprocessing, shape: {df.shape} and columns {df.columns}')
 
     # finally, make final feature matrix
-    features = torch.tensor(df.values)
+    features = torch.tensor(df.values, dtype=torch.float)
 
     # construct metadata
     datasetMeta = DatasetMeta(name, targetFeature, df.columns.tolist(), featureGroups)

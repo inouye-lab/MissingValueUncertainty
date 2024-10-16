@@ -18,13 +18,13 @@ class Method(ABC):
     """Base class defining a method for handling missing values and missing value uncertainty"""
 
     @abstractmethod
-    def predictWithUncertainty(self, features: Tensor, rand: Generator = None, index: int = None
+    def predictWithUncertainty(self, features: Tensor, rand: Generator = None, indices: Tensor = None
                                ) -> Tuple[Tensor, Tensor]:
         """
         Make a prediction using the given features.
         :param features: Input tensor of dimension `(samples, features)` with missingness.
         :param rand:     Random state for random generation
-        :param index:    Sample index for the sake of caching. This should only be used to reduce computation times,
+        :param indices:  Sample indices for the sake of caching. This should only be used to reduce computation times,
                          not in any way that provides access to normally hidden data.
         :return: Vector of prediction means `(samples,)` and missing value variances `(samples,)`
         """
@@ -55,20 +55,21 @@ class BasicCombinationMethod(Method):
     def name(self) -> str:
         return f"Basic Imputation - {self.imputator.name}"
 
-    def estimateUncertainty(self, features: Tensor, rand: Generator = None) -> Tensor:
+    def estimateUncertainty(self, features: Tensor, mean: Tensor, rand: Generator = None) -> Tensor:
         """
         Estimate the missing value uncertainty in the prediction. Default implementation just returns zero
         :param features: Input tensor of dimension `(samples, features)` with missingness.
+        :param mean:     Predicted mean values
         :param rand:     Random state for random generation
         :return: Vector of missing value variances of size `(samples,)`
         """
         return torch.zeros((features.shape[INDEX_SAMPLE],), device=features.device)
 
     @override
-    def predictWithUncertainty(self, features: Tensor, rand: Generator = None, index: int = None
+    def predictWithUncertainty(self, features: Tensor, rand: Generator = None, indices: Tensor = None
                                ) -> Tuple[Tensor, Tensor]:
         mean = self.regressor.predict(self.imputator.impute(features))
-        uncertainty = self.estimateUncertainty(features, rand)
+        uncertainty = self.estimateUncertainty(features, mean, rand)
         return mean, uncertainty
 
 
@@ -131,7 +132,7 @@ class EmpiricalUncertaintyMethod(BasicCombinationMethod, ABC, Generic[C]):
         pass
 
     @override
-    def estimateUncertainty(self, features: Tensor, rand: Generator = None) -> Tensor:
+    def estimateUncertainty(self, features: Tensor, mean: Tensor, rand: Generator = None) -> Tensor:
         numSamples = features.shape[INDEX_SAMPLE]
         uncertainty = torch.empty((numSamples,), device=features.device, dtype=torch.float)
         for i in range(numSamples):
@@ -224,7 +225,7 @@ class MonteCarloMethod(Method):
     def name(self) -> str:
         return f"Monte Carlo - {self.distribution.name} - {self.samples} samples"
 
-    def predictWithUncertainty(self, features: Tensor, rand: Generator = None, index: int = None
+    def predictWithUncertainty(self, features: Tensor, rand: Generator = None, indices: Tensor = None
                                ) -> Tuple[Tensor, Tensor]:
         dataSamples = features.shape[INDEX_SAMPLE]
         numFeatures = features.shape[INDEX_FEATURE]
@@ -260,13 +261,14 @@ class MonteCarloBatchMethod(Method):
         return f"Monte Carlo - {self.generator.name} - {self.samples} samples"
 
     @override
-    def predictWithUncertainty(self, features: Tensor, rand: Generator = None, index: int = None
+    def predictWithUncertainty(self, features: Tensor, rand: Generator = None, indices: Tensor = None
                                ) -> Tuple[Tensor, Tensor]:
         featureSamples = features.shape[INDEX_SAMPLE]
         means: Optional[Tensor] = None
         variances: Optional[Tensor] = None
 
-        for fIdx in range(features.shape[INDEX_SAMPLE]):
+        for fIdx, feature in enumerate(features):
+            index = None if indices is None else int(indices[fIdx])
             batch = self.generator.createBatch(features[fIdx], self.samples, index, rand)
             prediction = self.regressor.predict(batch)
             # we don't know the output size without running the regressor, so lazily init the output tensors
@@ -275,7 +277,30 @@ class MonteCarloBatchMethod(Method):
             if variances is None:
                 variances = torch.empty((featureSamples, *prediction.shape[1:]), device=features.device)
             # fill in output from the prediction
-            means[fIdx, :] = prediction.mean(dim=0)
-            variances[fIdx, :] = prediction.var(dim=0)
+            means[fIdx] = prediction.mean(dim=0)
+            variances[fIdx] = prediction.var(dim=0)
 
         return means, variances
+
+
+class ScaleMaxBetaVarianceMethod(BasicCombinationMethod):
+    """
+    Method that estimates uncertainty as a scaled mean of max beta distribution variance
+    """
+
+    scale: float
+    """Amount to scale the beta max variance by"""
+
+    def __init__(self, regressor: Regressor, imputator: Imputator, scale: float = 0.99):
+        assert 0 < scale < 1, "Scale must be between 0 and 1"
+        super().__init__(regressor, imputator)
+        self.regressor = regressor
+        self.scale = scale
+
+    @property
+    @override
+    def name(self) -> str:
+        return f"Beta Mean * {self.scale}"
+
+    def estimateUncertainty(self, features: Tensor, mean: Tensor, rand: Generator = None) -> Tensor:
+        return mean * (1 - mean) * self.scale

@@ -7,7 +7,8 @@ import torch
 from overrides import override
 from sklearn.linear_model import Ridge
 from torch import Tensor
-from torch.nn import Module, MSELoss
+from torch.nn import Module, MSELoss, Sigmoid
+from torch.nn.functional import sigmoid
 from torch.utils.data import DataLoader
 
 from ..dataset.csv import CsvDataset, CsvDatasetSplits
@@ -206,3 +207,44 @@ class NeuralNetworkRegressor(Regressor):
     @override
     def to(self, device: torch.device):
         self.nn.to(device)
+
+
+def _identity(features: Tensor) -> Tensor:
+    """Simple identity function for fallback"""
+    return features
+
+
+class NaiveLinearRegressor(Regressor):
+    """
+    Simple classifier using a linear combination for weights and a sigmoid to map that to probability values.
+    Saves needing to deal with any libraries or setup a neural network for a simple setup.
+    """
+
+    weights: Tensor
+    """Weights for each feature in the classifier"""
+    bias: Tensor
+    """Constant offset from the inner product"""
+    activation: callable
+    """Function mapping a tensor to the output"""
+
+    def __init__(self, weights: Tensor, bias: Tensor = 0, activation: callable = None):
+        self.weights = torch.as_tensor(weights, dtype=torch.float)
+        self.bias = torch.as_tensor(bias, device=self.weights.device)
+        self.activation = _identity if activation is None else activation
+
+        # validate final parameters
+        weightSize = len(self.weights.shape)
+        assert weightSize == 1 or weightSize == 2, "Weights must be a vector or matrix"
+        outSize = self.weights.shape[0] if weightSize == 2 else 1
+        if len(self.bias.shape) > 0:
+            assert len(self.bias.shape) == 1 and self.bias.shape[0] == outSize, \
+                f"Bias must be a vector of the output size, got {self.bias.shape}, expected {outSize}"
+
+    @override
+    def predict(self, features: Tensor) -> Tensor:
+        return self.activation(torch.inner(features, self.weights) + self.bias)
+
+    @override
+    def to(self, device: torch.device) -> None:
+        self.weights = self.weights.to(device)
+        self.bias = self.bias.to(device)
