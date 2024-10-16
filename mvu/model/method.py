@@ -55,10 +55,11 @@ class BasicCombinationMethod(Method):
     def name(self) -> str:
         return f"Basic Imputation - {self.imputator.name}"
 
-    def estimateUncertainty(self, features: Tensor, rand: Generator = None) -> Tensor:
+    def estimateUncertainty(self, features: Tensor, mean: Tensor, rand: Generator = None) -> Tensor:
         """
         Estimate the missing value uncertainty in the prediction. Default implementation just returns zero
         :param features: Input tensor of dimension `(samples, features)` with missingness.
+        :param mean:     Predicted mean values
         :param rand:     Random state for random generation
         :return: Vector of missing value variances of size `(samples,)`
         """
@@ -68,7 +69,7 @@ class BasicCombinationMethod(Method):
     def predictWithUncertainty(self, features: Tensor, rand: Generator = None, indices: Tensor = None
                                ) -> Tuple[Tensor, Tensor]:
         mean = self.regressor.predict(self.imputator.impute(features))
-        uncertainty = self.estimateUncertainty(features, rand)
+        uncertainty = self.estimateUncertainty(features, mean, rand)
         return mean, uncertainty
 
 
@@ -131,7 +132,7 @@ class EmpiricalUncertaintyMethod(BasicCombinationMethod, ABC, Generic[C]):
         pass
 
     @override
-    def estimateUncertainty(self, features: Tensor, rand: Generator = None) -> Tensor:
+    def estimateUncertainty(self, features: Tensor, mean: Tensor, rand: Generator = None) -> Tensor:
         numSamples = features.shape[INDEX_SAMPLE]
         uncertainty = torch.empty((numSamples,), device=features.device, dtype=torch.float)
         for i in range(numSamples):
@@ -280,3 +281,26 @@ class MonteCarloBatchMethod(Method):
             variances[fIdx] = prediction.var(dim=0)
 
         return means, variances
+
+
+class ScaleMaxBetaVarianceMethod(BasicCombinationMethod):
+    """
+    Method that estimates uncertainty as a scaled mean of max beta distribution variance
+    """
+
+    scale: float
+    """Amount to scale the beta max variance by"""
+
+    def __init__(self, regressor: Regressor, imputator: Imputator, scale: float = 0.99):
+        assert 0 < scale < 1, "Scale must be between 0 and 1"
+        super().__init__(regressor, imputator)
+        self.regressor = regressor
+        self.scale = scale
+
+    @property
+    @override
+    def name(self) -> str:
+        return f"Beta Mean * {self.scale}"
+
+    def estimateUncertainty(self, features: Tensor, mean: Tensor, rand: Generator = None) -> Tensor:
+        return mean * (1 - mean) * self.scale
