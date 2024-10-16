@@ -1,10 +1,13 @@
 from typing import Tuple, Union, List
 
 import torch
-from torch import Tensor
+from overrides import override
+from torch import Tensor, Generator
 from torch.distributions import Distribution, Beta
 
+from .decision import DecisionMaker, computeBestAction
 from .delta_dist import DeltaDistribution
+from ..model.method import Method
 
 
 def estimateBetaParametersFromMoments(mean: Tensor, var: Tensor) -> Tuple[Tensor, Tensor]:
@@ -55,3 +58,44 @@ def estimateBetaDistributionFromMoments(mean: Tensor, var: Tensor) -> Union[Dist
     if len(mean.shape) == 0:
         return _toDistribution(mean, var, alpha, beta)
     return [_toDistribution(*params) for params in zip(mean, var, alpha, beta)]
+
+
+class MethodOfMomentsDecisionMaker(DecisionMaker):
+    """
+    Makes decisions using the method of moments to map a method to a distribution, then samples it to estimate actions.
+    """
+
+    method: Method
+    """Method to run, producing a mean and variance"""
+    size: torch.Size
+    """Samples to take from the distribution"""
+    momentMatcher: callable
+    """
+    Method matching a tensor of means and a tensor of variances to a distribution (for shape size 0)
+    or a list of distributions (for shape size 1). See `estimateBetaDistributionFromMoments`.
+    """
+
+    def __init__(self, method: Method, distSamples: int, momentMatcher: callable = estimateBetaDistributionFromMoments):
+        self.method = method
+        self.size = torch.Size((distSamples,))
+        self.momentMatcher = momentMatcher
+
+    @override
+    def estimateBestAction(self, features: Tensor, lossFunction: callable, actions: Tensor, rand: Generator = None,
+                           index: int = None) -> Tuple[Tensor, Tensor]:
+        inputSamples = features.shape[0]
+        mean, var = self.method.predictWithUncertainty(features, rand=rand, index=index)
+        assert mean.shape[0] == inputSamples
+        assert var.shape[0] == inputSamples
+        distributions: List[Distribution] = self.momentMatcher(mean, var)
+        assert len(distributions) == inputSamples
+        # TODO: not sure how to enforce the random state in torch distributions
+        phis = [dist.sample(self.size) for dist in distributions]
+        bestActions = torch.empty((inputSamples,), dtype=torch.int)
+        confidences = torch.empty((inputSamples,), dtype=torch.float)
+        for i, phi in enumerate(phis):
+            action, confidence = computeBestAction(phi, lossFunction, actions)
+            bestActions[i] = action
+            confidences[i] = confidence
+        return bestActions, confidences
+

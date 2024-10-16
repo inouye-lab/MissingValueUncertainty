@@ -1,7 +1,8 @@
+from abc import ABC, abstractmethod
 from typing import Tuple
 
 import torch
-from torch import Tensor
+from torch import Tensor, Generator
 from torch.distributions import Distribution
 
 
@@ -93,3 +94,24 @@ def sampleProbabilityActionDominated(dist: Distribution, samples: int, lossFunct
     :return:  Probability that action is dominated by another action
     """
     return computeProbabilityActionDominated(dist.sample(torch.Size((samples,))), lossFunction, action, actions)
+
+
+class DecisionMaker(ABC):
+    """
+    Logic to make a decision given a input tensor (with missingness) and an input action space (with loss function)
+    """
+
+    @abstractmethod
+    def estimateBestAction(self, features: Tensor, lossFunction: callable, actions: Tensor, rand: Generator = None,
+                           index: int = None) -> Tuple[Tensor, Tensor]:
+        """
+        Estimates the best action for the given features list.
+        :param features:      List of features with missingness, size is (inputSamples, featureDim...)
+        :param lossFunction:  Loss function to evaluate
+        :param actions:       List of valid actions
+        :param rand:          Random state
+        :param index:         Sample index for the sake of caching. This should only be used to reduce computation times,
+                              not in any way that provides access to normally hidden data.
+        :return:  Tuple of actions (size inputSamples) and action confidences (size inputSamples)
+        """
+        pass
