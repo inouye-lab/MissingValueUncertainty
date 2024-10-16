@@ -82,9 +82,9 @@ class MethodOfMomentsDecisionMaker(DecisionMaker):
 
     @override
     def estimateBestAction(self, features: Tensor, lossFunction: callable, actions: Tensor, rand: Generator = None,
-                           index: int = None) -> Tuple[Tensor, Tensor]:
+                           indices: Tensor = None) -> Tuple[Tensor, Tensor]:
         inputSamples = features.shape[0]
-        mean, var = self.method.predictWithUncertainty(features, rand=rand, index=index)
+        mean, var = self.method.predictWithUncertainty(features, rand=rand, indices=indices)
         assert mean.shape[0] == inputSamples
         assert var.shape[0] == inputSamples
         distributions: List[Distribution] = self.momentMatcher(mean, var)

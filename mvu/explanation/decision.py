@@ -103,14 +103,14 @@ class DecisionMaker(ABC):
 
     @abstractmethod
     def estimateBestAction(self, features: Tensor, lossFunction: callable, actions: Tensor, rand: Generator = None,
-                           index: int = None) -> Tuple[Tensor, Tensor]:
+                           indices: Tensor = None) -> Tuple[Tensor, Tensor]:
         """
         Estimates the best action for the given features list.
         :param features:      List of features with missingness, size is (inputSamples, featureDim...)
         :param lossFunction:  Loss function to evaluate
         :param actions:       List of valid actions
         :param rand:          Random state
-        :param index:         Sample index for the sake of caching. This should only be used to reduce computation times,
+        :param indices:       Sample indices for the sake of caching. This should only be used to reduce computation times,
                               not in any way that provides access to normally hidden data.
         :return:  Tuple of actions (size inputSamples) and action confidences (size inputSamples)
         """
