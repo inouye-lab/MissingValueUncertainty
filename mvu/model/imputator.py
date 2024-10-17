@@ -7,7 +7,7 @@ from pandas import DataFrame
 from statsmodels.imputation.mice import MICEData
 from torch import Tensor, Generator
 
-from .cache import CachableModel
+from .common import CachableModel, Namable
 from ..dataset.meta import validateFeatures, INDEX_SAMPLE, INDEX_FEATURE, DatasetMeta
 
 
@@ -20,13 +20,7 @@ def containsMissing(features: Tensor) -> bool:
     return torch.count_nonzero(torch.isnan(features)) > 0
 
 
-class Imputator(ABC, CachableModel):
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        """Gets the name of this imputator for saving in result CSV."""
-        pass
-
+class Imputator(CachableModel, Namable, ABC):
     def impute(self, features: Tensor, copy: bool = True, rand: Generator = None, indices: Tensor = None) -> Tensor:
         """
         Replaces missing values (that is, NaN values) in the given tensor.

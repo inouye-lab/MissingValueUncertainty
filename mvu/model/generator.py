@@ -7,12 +7,12 @@ import torch
 from overrides import override
 from torch import Tensor, Generator
 
-from .cache import CachableModel
+from .common import CachableModel, Namable
 from .imputator import Imputator
 from ..serializer import loadValue, saveValue
 
 
-class BatchGenerator(ABC, CachableModel):
+class BatchGenerator(CachableModel, Namable, ABC):
     """Base class defining a method for creating a monte carlo batch from a sample."""
 
     @abstractmethod
@@ -25,12 +25,6 @@ class BatchGenerator(ABC, CachableModel):
         :param rand:    Random state
         :return:  Batch of images based on samples
         """
-        pass
-
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        """Gets the name of this method for saving in result CSV."""
         pass
 
 

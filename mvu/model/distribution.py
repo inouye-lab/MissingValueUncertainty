@@ -25,12 +25,6 @@ class Distribution(BatchGenerator, ABC):
     Implementers will also often implement `Imputator` to support distribution based imputation.
     """
 
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        """Gets the name of this distribution for saving in result CSV."""
-        pass
-
     def augment(self, features: Tensor, distSamples: int, rand: Generator = None) -> Tensor:
         """
         Creates an augmented for use in Monte Carlo methods.

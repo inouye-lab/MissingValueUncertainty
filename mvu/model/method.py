@@ -6,7 +6,7 @@ from overrides import override
 from torch import Tensor, Generator
 from torch.utils.data import DataLoader
 
-from .cache import CachableModel
+from .common import CachableModel, Namable
 from .distribution import Distribution
 from .generator import BatchGenerator
 from .imputator import Imputator
@@ -15,7 +15,7 @@ from ..dataset.csv import CsvDataset
 from ..dataset.meta import INDEX_SAMPLE, INDEX_FEATURE, DatasetMeta
 
 
-class Method(ABC, CachableModel):
+class Method(CachableModel, Namable, ABC):
     """Base class defining a method for handling missing values and missing value uncertainty"""
 
     @abstractmethod
@@ -29,12 +29,6 @@ class Method(ABC, CachableModel):
                          not in any way that provides access to normally hidden data.
         :return: Vector of prediction means `(samples,)` and missing value variances `(samples,)`
         """
-        pass
-
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        """Gets the name of this method for saving in result CSV."""
         pass
 
 
@@ -317,7 +311,7 @@ class ScaleMaxBetaVarianceMethod(BasicCombinationMethod):
     @property
     @override
     def name(self) -> str:
-        return f"Beta Mean * {self.scale}"
+        return f"Beta Mean * {self.scale} - {self.imputator.name}"
 
     def estimateUncertainty(self, features: Tensor, mean: Tensor, rand: Generator = None, indices: Tensor = None
                             ) -> Tensor:

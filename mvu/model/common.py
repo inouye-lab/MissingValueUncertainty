@@ -1,4 +1,4 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 
 import torch
 from torch import Tensor
@@ -16,3 +16,13 @@ class CachableModel(ABC):
         :return:  Boolean tensor where true indices the given index is supported
         """
         return torch.ones_like(indices, dtype=torch.bool)
+
+
+class Namable(ABC):
+    """Common interface of objects with names"""
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Gets the name of this object for saving in result CSV."""
+        pass

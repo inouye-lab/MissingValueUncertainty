@@ -97,3 +97,7 @@ class MethodOfMomentsDecisionMaker(DecisionMaker):
     def supportsIndices(self, indices: Tensor) -> Tensor:
         return self.method.supportsIndices(indices)
 
+    @property
+    @override
+    def name(self):
+        return self.method.name
