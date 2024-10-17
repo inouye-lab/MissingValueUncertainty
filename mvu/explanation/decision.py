@@ -73,8 +73,9 @@ def computeBestActions(phis: Union[List[Tensor], Tensor], lossFunction: callable
     :return: Vector of actions and confidences of size inputSamples
     """
     inputSamples = len(phis)
-    bestActions = torch.empty((inputSamples,), dtype=torch.int)
-    confidences = torch.empty((inputSamples,), dtype=torch.float)
+    device = phis[0].device
+    bestActions = torch.empty((inputSamples,), dtype=torch.int, device=device)
+    confidences = torch.empty((inputSamples,), dtype=torch.float, device=device)
     for i, phi in enumerate(phis):
         action, confidence = computeBestAction(phi, lossFunction, actions)
         bestActions[i] = action

@@ -20,7 +20,7 @@ def bestActionWithoutMissing(features: Tensor, classifier: Regressor, lossFuncti
 
 def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMaker: DecisionMaker,
                 lossFunction: callable, actions: Tensor, buckets: int,
-                classifier: Regressor = None, rand: Generator = None) -> Tensor:
+                classifier: Regressor = None, rand: Generator = None, device: Optional[torch.device] = None) -> Tensor:
     """
     Computes the missing value calibration error for the given decision maker.
     :param cleanLoader:     DataLoader for data with no missingness,
@@ -33,17 +33,18 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
     :param classifier:      Classifier for predicting best actions without missingness.
                             If none, cleanLoader is assumed best actions.
     :param rand:            Random state.
+    :param device:          Device to use for calculations
     :return:  Computed missing value calibration error
     """
-    bucketSizes = torch.zeros((buckets,), dtype=torch.int)
-    bucketConfidence = torch.zeros((buckets,), dtype=torch.float)
-    bucketConsistency = torch.zeros((buckets,), dtype=torch.float)
+    bucketSizes = torch.zeros((buckets,), dtype=torch.int, device=device)
+    bucketConfidence = torch.zeros((buckets,), dtype=torch.float, device=device)
+    bucketConsistency = torch.zeros((buckets,), dtype=torch.float, device=device)
     time = perf_counter()
 
     for i, (cleanBatch, mutatedBatch) in enumerate(zip(cleanLoader, mutatedLoader)):
         mutatedFeatures = mutatedBatch[0]
         sampleIndices: Optional[Tensor] = None
-        supportedIndices: Optional[Tensor] = None
+        supportedIndices: Tensor
         # if we have indices, ensure they match then pass them along
         if len(mutatedBatch) == 3:
             sampleIndices = mutatedBatch[2]
@@ -64,6 +65,8 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
             assert len(bestActions.shape) == 1, "Best actions batch must be a vector"
             assert bestActions.shape[0] == mutatedFeatures.shape[0], \
                 "Clean and mutated dataset must have the same batch size"
+            if device is not None:
+                bestActions = bestActions.to(device)
         else:
             # if we have a classifier, the batch is (features, labels, [indices])
             # enforce index match
@@ -72,11 +75,15 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
                     f"Received batch {i} of data with mismatching cache indices, likely invalid datasets"
             # compute best actions with respect to clean data
             cleanFeatures = cleanBatch[0][supportedIndices]
+            if device is not None:
+                cleanFeatures = cleanFeatures.to(device)
             assert cleanFeatures.shape == mutatedFeatures.shape, \
                 "Clean and mutated dataset must have the same batch shape"
             bestActions = bestActionWithoutMissing(cleanFeatures, classifier, lossFunction, actions)
 
         # compute predicted actions
+        if device is not None:
+            mutatedFeatures = mutatedFeatures.to(device)
         predActions, confidences = decisionMaker.estimateBestAction(
             mutatedFeatures, lossFunction, actions, rand=rand, indices=sampleIndices
         )
@@ -107,11 +114,11 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
 
     mvce = (bucketSizes * torch.abs(bucketConsistency - bucketConfidence)).sum() / bucketSizes.sum()
     time = perf_counter() - time
-    logging.info(f"Computed MVCE {mvce.item()} in {time} seconds with {buckets} buckets:")
-    logging.info(f"Non-zero buckets: {torch.nonzero(nonZero).squeeze()}")
-    logging.info(f"Final bucket sizes: {bucketSizes}")
-    logging.info(f"Final bucket confidences: {bucketConfidence}")
-    logging.info(f"Final bucket consistencies: {bucketConsistency}")
+    logging.info(f"Computed MVCE {mvce.cpu().item()} in {time} seconds with {buckets} buckets:")
+    logging.info(f"Non-zero buckets: {torch.nonzero(nonZero).squeeze().cpu()}")
+    logging.info(f"Final bucket sizes: {bucketSizes.cpu()}")
+    logging.info(f"Final bucket confidences: {bucketConfidence.cpu()}")
+    logging.info(f"Final bucket consistencies: {bucketConsistency.cpu()}")
 
     # compute final MVCE metric
     return mvce
