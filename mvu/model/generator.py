@@ -67,7 +67,7 @@ class CachingBatchGenerator(BatchGenerator):
     @override
     def name(self) -> str:
         if self.generator is None:
-            return f"Cache from {self.cachePath}"
+            return f"Caching Generator"
         return f"Caching {self.generator.name}"
 
     @override

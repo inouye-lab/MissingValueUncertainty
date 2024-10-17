@@ -225,6 +225,10 @@ class DatasetMeta(object):
         else:
             return os.path.commonprefix(self.labels[slice(first, first+count)]).rstrip()
 
+    def featureIndex(self, name: str) -> int:
+        """Gets the index of the given feature by name, or raises a ValueError if its not present"""
+        assert isinstance(self.target, List), "Cannot get feature index from single target"
+        return self.target.index(name)
 
 def createImageLabels(imageSize: int, channels: int = 1) -> List[str]:
     """

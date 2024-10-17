@@ -15,6 +15,7 @@ from ..torch import TorchDatasetSplits
 class CelebAttributes:
     names: List[str]
     """Names of each attribute in the file"""
+    originalNames: List[str]
 
     attributes: Tensor
     """Boolean tensor mapping the index to the value for each key"""
@@ -25,6 +26,7 @@ class CelebAttributes:
             rows = int(file.readline().strip())
             # next line is the name of each attribute
             self.names = file.readline().strip().split()
+            self.originalNames = self.names
             attributeCount = len(self.names)
             # declare attribute tensor
             self.attributes = torch.empty((rows, attributeCount), dtype=torch.bool)
