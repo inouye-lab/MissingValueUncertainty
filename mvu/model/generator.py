@@ -7,11 +7,12 @@ import torch
 from overrides import override
 from torch import Tensor, Generator
 
+from .cache import CachableModel
 from .imputator import Imputator
 from ..serializer import loadValue, saveValue
 
 
-class BatchGenerator(ABC):
+class BatchGenerator(ABC, CachableModel):
     """Base class defining a method for creating a monte carlo batch from a sample."""
 
     @abstractmethod
@@ -115,6 +116,23 @@ class CachingBatchGenerator(BatchGenerator):
         saveValue(batch.cpu(), batchPath, Tensor)
         return batch
 
+    def hasCache(self, index) -> bool:
+        """
+        Checks if the generator has a cache for the given index
+        :param index:   Index to check.
+        :return:   True if the index is already cached
+        """
+        return os.path.exists(os.path.join(self.cachePath, f"{index}.pklz"))
+
+    @override
+    def supportsIndices(self, indices: Tensor) -> Tensor:
+        if self.generator is not None:
+            return torch.ones_like(indices, dtype=torch.bool)
+        supports = torch.zeros_like(indices, dtype=torch.bool)
+        for i, index in enumerate(indices):
+            supports[i] = self.hasCache(index.item())
+        return supports
+
 
 class SingleSampleImputator(Imputator):
     """
@@ -136,3 +154,7 @@ class SingleSampleImputator(Imputator):
         for i in range(features.shape[0]):
             index = None if indices is None else indices[i]
             features[i] = self.generator.createBatch(features, 1, index=index, rand=rand)
+
+    @override
+    def supportsIndices(self, indices: Tensor) -> Tensor:
+        return self.generator.supportsIndices(indices)

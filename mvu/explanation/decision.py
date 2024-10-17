@@ -5,6 +5,8 @@ import torch
 from torch import Tensor, Generator
 from torch.distributions import Distribution
 
+from mvu.model.cache import CachableModel
+
 
 def computeActionConfidence(phi: Tensor, lossFunction: callable, action: int, actions: Tensor) -> float:
     """
@@ -115,7 +117,7 @@ def sampleProbabilityActionDominated(dist: Distribution, samples: int, lossFunct
     return computeProbabilityActionDominated(dist.sample(torch.Size((samples,))), lossFunction, action, actions)
 
 
-class DecisionMaker(ABC):
+class DecisionMaker(ABC, CachableModel):
     """
     Logic to make a decision given a input tensor (with missingness) and an input action space (with loss function)
     """

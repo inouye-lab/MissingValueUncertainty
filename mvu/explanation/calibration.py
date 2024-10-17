@@ -41,26 +41,37 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
     time = perf_counter()
 
     for i, (cleanBatch, mutatedBatch) in enumerate(zip(cleanLoader, mutatedLoader)):
+        mutatedFeatures = mutatedBatch[0]
         sampleIndices: Optional[Tensor] = None
+        supportedIndices: Optional[Tensor] = None
         # if we have indices, ensure they match then pass them along
         if len(mutatedBatch) == 3:
             sampleIndices = mutatedBatch[2]
-        mutatedFeatures = mutatedBatch[0]
+            # ensure that all samples in this batch can be processed, lets us skip non-cached images when using a cache
+            supportedIndices = decisionMaker.supportsIndices(sampleIndices)
+            # skip the batch if it has no processable samples
+            if torch.count_nonzero(supportedIndices) == 0:
+                continue
+            sampleIndices = sampleIndices[supportedIndices]
+        else:
+            supportedIndices = torch.ones((mutatedFeatures.shape[0],), dtype=torch.bool)
+        mutatedFeatures = mutatedFeatures[supportedIndices]
 
         # if the classifier is None, it means our dataloader contains the best actions
         bestActions: Tensor
         if classifier is None:
-            bestActions = cleanBatch
+            bestActions = cleanBatch[mutatedFeatures]
+            assert len(bestActions.shape) == 1, "Best actions batch must be a vector"
             assert bestActions.shape[0] == mutatedFeatures.shape[0], \
                 "Clean and mutated dataset must have the same batch size"
         else:
             # if we have a classifier, the batch is (features, labels, [indices])
             # enforce index match
             if len(cleanBatch) == 3:
-                assert torch.count_nonzero(torch.ne(sampleIndices, cleanBatch[2])) == 0, \
+                assert torch.count_nonzero(torch.ne(sampleIndices, cleanBatch[2][supportedIndices])) == 0, \
                     f"Received batch {i} of data with mismatching cache indices, likely invalid datasets"
             # compute best actions with respect to clean data
-            cleanFeatures = cleanBatch[0]
+            cleanFeatures = cleanBatch[0][supportedIndices]
             assert cleanFeatures.shape == mutatedFeatures.shape, \
                 "Clean and mutated dataset must have the same batch shape"
             bestActions = bestActionWithoutMissing(cleanFeatures, classifier, lossFunction, actions)

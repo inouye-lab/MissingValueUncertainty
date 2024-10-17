@@ -93,3 +93,7 @@ class MethodOfMomentsDecisionMaker(DecisionMaker):
         phis = [dist.sample(self.size) for dist in distributions]
         return computeBestActions(phis, lossFunction, actions)
 
+    @override
+    def supportsIndices(self, indices: Tensor) -> Tensor:
+        return self.method.supportsIndices(indices)
+

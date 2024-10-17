@@ -7,6 +7,7 @@ from pandas import DataFrame
 from statsmodels.imputation.mice import MICEData
 from torch import Tensor, Generator
 
+from .cache import CachableModel
 from ..dataset.meta import validateFeatures, INDEX_SAMPLE, INDEX_FEATURE, DatasetMeta
 
 
@@ -19,7 +20,7 @@ def containsMissing(features: Tensor) -> bool:
     return torch.count_nonzero(torch.isnan(features)) > 0
 
 
-class Imputator(ABC):
+class Imputator(ABC, CachableModel):
     @property
     @abstractmethod
     def name(self) -> str:
@@ -124,6 +125,7 @@ class MiceImputator(Imputator):
             name += f" - {self.augmentName} Augment"
         return name
 
+    @override
     def _impute(self, features: Tensor, rand: Generator = None, indices: Tensor = None) -> None:
         # short circuit early if not augmented and a whole column of features is missing
         sampleCount = features.shape[INDEX_SAMPLE]

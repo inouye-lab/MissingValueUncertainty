@@ -6,6 +6,7 @@ from overrides import override
 from torch import Tensor, Generator
 from torch.utils.data import DataLoader
 
+from .cache import CachableModel
 from .distribution import Distribution
 from .generator import BatchGenerator
 from .imputator import Imputator
@@ -14,7 +15,7 @@ from ..dataset.csv import CsvDataset
 from ..dataset.meta import INDEX_SAMPLE, INDEX_FEATURE, DatasetMeta
 
 
-class Method(ABC):
+class Method(ABC, CachableModel):
     """Base class defining a method for handling missing values and missing value uncertainty"""
 
     @abstractmethod
@@ -74,6 +75,10 @@ class BasicCombinationMethod(Method):
         mean = self.regressor.predict(self.imputator.impute(features, rand=rand, indices=indices))
         uncertainty = self.estimateUncertainty(features, mean, rand, indices=indices)
         return mean, uncertainty
+
+    @override
+    def supportsIndices(self, indices: Tensor) -> Tensor:
+        return self.imputator.supportsIndices(indices)
 
 
 C = TypeVar('C')
@@ -247,6 +252,10 @@ class MonteCarloMethod(Method):
         return torch.mean(predictions, dim=1).reshape(-1), \
             torch.var(predictions, dim=1).reshape(-1)
 
+    @override
+    def supportsIndices(self, indices: Tensor) -> Tensor:
+        return self.distribution.supportsIndices(indices)
+
 
 class MonteCarloBatchMethod(Method):
     regressor: Regressor
@@ -285,6 +294,10 @@ class MonteCarloBatchMethod(Method):
             variances[fIdx] = prediction.var(dim=0)
 
         return means, variances
+
+    @override
+    def supportsIndices(self, indices: Tensor) -> Tensor:
+        return self.generator.supportsIndices(indices)
 
 
 class ScaleMaxBetaVarianceMethod(BasicCombinationMethod):
