@@ -147,7 +147,7 @@ class SingleSampleImputator(Imputator):
     def _impute(self, features: Tensor, rand: Generator = None, indices: Tensor = None) -> None:
         for i in range(features.shape[0]):
             index = None if indices is None else indices[i]
-            features[i] = self.generator.createBatch(features, 1, index=index, rand=rand)
+            features[i] = self.generator.createBatch(features[i], 1, index=index, rand=rand)
 
     @override
     def supportsIndices(self, indices: Tensor) -> Tensor:
