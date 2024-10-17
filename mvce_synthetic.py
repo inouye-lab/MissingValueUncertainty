@@ -2,7 +2,7 @@ import argparse
 import csv
 import logging
 import os
-from typing import List, Optional
+from typing import List
 
 import torch
 from torch.nn.functional import sigmoid
@@ -140,13 +140,14 @@ if __name__ == '__main__':
         for samples in args.generator_samples
         for generator in generators
     ]
-    if args.imputation_baselines:
+    if args.imputation_baselines or len(args.beta_variance_scales) > 0:
         logging.info("Including baseline imputators with zero imputation, single sample imputation, and "
                      "conditional gaussian. Running all imputators with zero variance.")
         for scale in args.beta_variance_scales:
             logging.info(f"Running all baseline imputators with {scale} scaled beta max variance.")
         for imputator in [ZeroImputator(), SingleSampleImputator(groundTruthGenerator), groundTruthGenerator]:
-            methods.append(BasicCombinationMethod(classifier, imputator))
+            if args.imputation_baselines:
+                methods.append(BasicCombinationMethod(classifier, imputator))
             for scale in args.beta_variance_scales:
                 methods.append(ScaleMaxBetaVarianceMethod(classifier, imputator, scale))
 
@@ -189,7 +190,7 @@ if __name__ == '__main__':
     logging.info(f"Finished running {len(finished)}/{len(experiments)} experiments.")
 
     # save all experiment results to the relevant CSV files
-    outputName = f"{args.name}-{date}"
+    outputName = f"synthetic-{date}"
     csvPath = os.path.join(outputFolder, f"{outputName}.csv")
     logging.info(f"Saving results to {csvPath}")
     with open(csvPath, "w") as csvFile:
