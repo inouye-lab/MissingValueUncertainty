@@ -362,9 +362,11 @@ class ConditionalGaussianDistribution(MarginalGaussianDistribution):
     If false, matrix inverses use singular value decomposition.
     Unused if `leastSquares` is True and not using `schur`.
     """
+    suffix: str
+    """Suffix to apply after name for display"""
 
     def __init__(self, datasetMeta: Optional[DatasetMeta], params: GaussianParameters, forceNumpy: bool = False,
-                 schur: Union[Tensor, bool] = False, leastSquares: bool = True, hermitian: bool = True):
+                 schur: Union[Tensor, bool] = False, leastSquares: bool = True, hermitian: bool = True, name: str = ''):
 
         super().__init__(datasetMeta, params, forceNumpy=forceNumpy)
         self.leastSquares = leastSquares
@@ -379,11 +381,12 @@ class ConditionalGaussianDistribution(MarginalGaussianDistribution):
         else:
             assert schur.shape == self.covariance.shape, "Covariance inverse matrix must be square and of input size"
             self.covarianceInv = schur
+        self.suffix = '' if name == '' else ' - ' + name
 
     @property
     @override
     def name(self) -> str:
-        return "Conditional Gaussian"
+        return "Conditional Gaussian" + self.suffix
 
     @override
     def _condition(self, vector: Tensor, missingMask: Tensor, returnCovariance: bool = True):
