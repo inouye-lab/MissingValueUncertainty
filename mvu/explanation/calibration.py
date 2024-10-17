@@ -7,6 +7,7 @@ from torch import Tensor, Generator
 from torch.utils.data import DataLoader
 
 from .decision import DecisionMaker, computeBestActions
+from ..logger import handleException
 from ..model.regressor import Regressor
 
 
@@ -112,13 +113,118 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
     bucketConfidence = bucketConfidence[nonZero] / bucketSizes
     bucketConsistency = bucketConsistency[nonZero] / bucketSizes
 
-    mvce = (bucketSizes * torch.abs(bucketConsistency - bucketConfidence)).sum() / bucketSizes.sum()
+    totalSamples = bucketSizes.sum()
+    mvce = (bucketSizes * torch.abs(bucketConsistency - bucketConfidence)).sum() / totalSamples
     time = perf_counter() - time
-    logging.info(f"Computed MVCE {mvce.cpu().item()} in {time} seconds with {buckets} buckets:")
-    logging.info(f"Non-zero buckets: {torch.nonzero(nonZero).squeeze().cpu()}")
-    logging.info(f"Final bucket sizes: {bucketSizes.cpu()}")
-    logging.info(f"Final bucket confidences: {bucketConfidence.cpu()}")
-    logging.info(f"Final bucket consistencies: {bucketConsistency.cpu()}")
+    logging.info(f"""
+        Computed MVCE {mvce.cpu().item()} for {decisionMaker.name} in {time} seconds with {buckets} buckets:
+        * Non-zero buckets: {torch.nonzero(nonZero).squeeze().cpu()}
+        * Final bucket sizes: {bucketSizes.cpu()} totaling {totalSamples.cpu().item()} samples
+        * Final bucket confidences: {bucketConfidence.cpu()}
+        * Final bucket consistencies: {bucketConsistency.cpu()}
+    """)
 
     # compute final MVCE metric
     return mvce
+
+
+class CalibrationExperiment:
+    # mvce parameters, see `computeMVCE` for docs
+    cleanLoader: DataLoader
+    mutatedLoader: DataLoader
+    decisionMaker: DecisionMaker
+    lossFunction: callable
+    actions: Tensor
+    buckets: int
+    classifier: Regressor
+    rand: Generator
+    device: torch.device
+
+    # additional parameters
+    maskName: str
+    """Name of the missing region"""
+    actionName: str
+    """Name of the action space"""
+    trials: int
+    """Number of times to compute the MVCE, for the sake of error bars"""
+    time: Optional[float]
+    """Duration of this experiment"""
+    results: Tensor
+    """MVCE results for this experiment, size is equal to trials"""
+
+    def __init__(self, cleanLoader: DataLoader, maskName: str, mutatedLoader: DataLoader, decisionMaker: DecisionMaker,
+                 actionName: str, lossFunction: callable, actions: Tensor, buckets: int, trials: int,
+                 classifier: Regressor = None, rand: Generator = None, device: Optional[torch.device] = None):
+        self.cleanLoader = cleanLoader
+        self.maskName = maskName
+        self.mutatedLoader = mutatedLoader
+        self.decisionMaker = decisionMaker
+
+        self.actionName = actionName
+        self.lossFunction = lossFunction
+        self.actions = actions
+
+        self.buckets = buckets
+        self.classifier = classifier
+        self.rand = rand
+        self.device = device
+        self.trials = trials
+        self.time = None
+
+    @property
+    def experimentName(self):
+        """Name of the overall experiment"""
+        return f"{self.decisionMaker.name} missing {self.maskName} in {self.actionName}"
+
+    def __call__(self, *args, **kwargs):
+        logging.info(f"Started running {self.experimentName}")
+        startTime = perf_counter()
+
+        try:
+            self.results = torch.empty((self.trials,), dtype=torch.float)
+            for i in range(self.trials):
+                self.results[i] = computeMVCE(
+                    self.cleanLoader, self.mutatedLoader, self.decisionMaker,
+                    self.lossFunction, self.actions, self.buckets, self.classifier,
+                    self.rand, self.device
+                ).cpu()
+        except KeyboardInterrupt as e:
+            # this is just logging the context so we know which experiment was terminated
+            # its in the log again later and earlier, but this reduces some of the debug time
+            logging.error(f"Received keyboard interrupt during {self.experimentName}, terminating program")
+            raise e
+        except BaseException as e:
+            handleException(type(e), e, e.__traceback__,
+                            message=f"Failed to process {self.experimentName}")
+
+        # store final experiment time
+        endTime = perf_counter()
+        self.time = endTime - startTime
+        logging.info(f"Finished running {self.experimentName} in {self.time} seconds")
+
+    @classmethod
+    def writeResultHeaders(cls, csvFile, trials: int) -> None:
+        """
+        Writes the result header to the file
+        :param csvFile:  CSV file for result writing
+        :param trials:   Number of trial headers to include
+        """
+        csvFile.writerow([
+            "Method", "Action Space", "Mask", "Time",
+            "MVCE Mean", "MVCE Std",
+            *[f"Trial {i+1}" for i in range(trials)]
+        ])
+
+    def writeResults(self, csvFile) -> None:
+        """
+        Writes the results to the file
+        :param csvFile:  CSV file for result writing
+        """
+        if self.time is None:
+            logging.error(f"Skipping including {self.experimentName} in result CSV as it did not complete.")
+
+        csvFile.writerow([
+            self.decisionMaker.name, self.actionName, self.maskName, self.time,
+            self.results.mean().item(), self.results.std().item(),
+            *[result.item() for result in self.results]
+        ])

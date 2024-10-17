@@ -1,7 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
 from time import perf_counter
-from typing import Any, Optional
+from typing import Any, Optional, Union, List
 
 import torch
 from overrides import override
@@ -189,7 +189,8 @@ class NaiveLinearRegressor(Regressor):
     activation: callable
     """Function mapping a tensor to the output"""
 
-    def __init__(self, weights: Tensor, bias: Tensor = 0, activation: callable = None):
+    def __init__(self, weights: Union[Tensor, List[float]], bias: Union[Tensor, List[float], float] = 0,
+                 activation: callable = None):
         self.weights = torch.as_tensor(weights, dtype=torch.float)
         self.bias = torch.as_tensor(bias, device=self.weights.device)
         self.activation = _identity if activation is None else activation
