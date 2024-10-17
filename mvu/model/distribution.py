@@ -297,7 +297,7 @@ class MarginalGaussianDistribution(Imputator, Distribution):
         return mean
 
     @override
-    def _impute(self, features: Tensor) -> None:
+    def _impute(self, features: Tensor, rand: Generator = None, indices: Tensor = None) -> None:
         validateFeatures(features, len(self.mean))
 
         for i in range(features.shape[INDEX_SAMPLE]):

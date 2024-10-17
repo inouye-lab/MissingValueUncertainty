@@ -5,7 +5,7 @@ import torch
 from overrides import override
 from pandas import DataFrame
 from statsmodels.imputation.mice import MICEData
-from torch import Tensor
+from torch import Tensor, Generator
 
 from ..dataset.meta import validateFeatures, INDEX_SAMPLE, INDEX_FEATURE, DatasetMeta
 
@@ -26,26 +26,32 @@ class Imputator(ABC):
         """Gets the name of this imputator for saving in result CSV."""
         pass
 
-    def impute(self, features: Tensor, copy: bool = True) -> Tensor:
+    def impute(self, features: Tensor, copy: bool = True, rand: Generator = None, indices: Tensor = None) -> Tensor:
         """
         Replaces missing values (that is, NaN values) in the given tensor.
         :param features: Input tensor, dimension 0 is samples and dimension 1 is features=
         :param copy:     If true, copy the tensor before modifying it
+        :param rand:     Random state for randomized imputation
+        :param indices:  Sample indices for the sake of caching. This should only be used to reduce computation times,
+                         not in any way that provides access to normally hidden data.
         :return: Output tensor, same dimensions as input
         """
         if not containsMissing(features):
             return features
         if copy:
             features = features.clone()
-        self._impute(features)
+        self._impute(features, rand, indices)
         assert not containsMissing(features), "Imputation did not remove all missing features"
         return features
 
     @abstractmethod
-    def _impute(self, features: Tensor) -> None:
+    def _impute(self, features: Tensor, rand: Generator = None, indices: Tensor = None) -> None:
         """
         Replaces missing values (that is, NaN values) in the given tensor.
         :param features: Input tensor, dimension 0 is samples and dimension 1 is features. May be freely modified
+        :param indices:  Sample indices for the sake of caching. This should only be used to reduce computation times,
+                         not in any way that provides access to normally hidden data.
+        :param rand:     Random state for randomized imputation
         """
         pass
 
@@ -62,7 +68,7 @@ class ZeroImputator(Imputator):
         return "Zero Imputation"
 
     @override
-    def _impute(self, features: Tensor) -> None:
+    def _impute(self, features: Tensor, rand: Generator = None, indices: Tensor = None) -> None:
         features[torch.isnan(features)] = 0
 
 
@@ -87,7 +93,7 @@ class ConstantImputator(Imputator):
         self._name = name
 
     @override
-    def _impute(self, features: Tensor) -> None:
+    def _impute(self, features: Tensor, rand: Generator = None, indices: Tensor = None) -> None:
         featureCount = len(self.constant)
         validateFeatures(features, featureCount)
         for i in range(featureCount):
@@ -118,7 +124,7 @@ class MiceImputator(Imputator):
             name += f" - {self.augmentName} Augment"
         return name
 
-    def _impute(self, features: Tensor) -> None:
+    def _impute(self, features: Tensor, rand: Generator = None, indices: Tensor = None) -> None:
         # short circuit early if not augmented and a whole column of features is missing
         sampleCount = features.shape[INDEX_SAMPLE]
         if self.additionalData is None:

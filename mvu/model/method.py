@@ -55,12 +55,15 @@ class BasicCombinationMethod(Method):
     def name(self) -> str:
         return f"Basic Imputation - {self.imputator.name}"
 
-    def estimateUncertainty(self, features: Tensor, mean: Tensor, rand: Generator = None) -> Tensor:
+    def estimateUncertainty(self, features: Tensor, mean: Tensor, rand: Generator = None, indices: Tensor = None
+                            ) -> Tensor:
         """
         Estimate the missing value uncertainty in the prediction. Default implementation just returns zero
         :param features: Input tensor of dimension `(samples, features)` with missingness.
         :param mean:     Predicted mean values
         :param rand:     Random state for random generation
+        :param indices:  Sample indices for the sake of caching. This should only be used to reduce computation times,
+                         not in any way that provides access to normally hidden data.
         :return: Vector of missing value variances of size `(samples,)`
         """
         return torch.zeros((features.shape[INDEX_SAMPLE],), device=features.device)
@@ -68,8 +71,8 @@ class BasicCombinationMethod(Method):
     @override
     def predictWithUncertainty(self, features: Tensor, rand: Generator = None, indices: Tensor = None
                                ) -> Tuple[Tensor, Tensor]:
-        mean = self.regressor.predict(self.imputator.impute(features))
-        uncertainty = self.estimateUncertainty(features, mean, rand)
+        mean = self.regressor.predict(self.imputator.impute(features, rand=rand, indices=indices))
+        uncertainty = self.estimateUncertainty(features, mean, rand, indices=indices)
         return mean, uncertainty
 
 
@@ -132,7 +135,8 @@ class EmpiricalUncertaintyMethod(BasicCombinationMethod, ABC, Generic[C]):
         pass
 
     @override
-    def estimateUncertainty(self, features: Tensor, mean: Tensor, rand: Generator = None) -> Tensor:
+    def estimateUncertainty(self, features: Tensor, mean: Tensor, rand: Generator = None, indices: Tensor = None
+                            ) -> Tensor:
         numSamples = features.shape[INDEX_SAMPLE]
         uncertainty = torch.empty((numSamples,), device=features.device, dtype=torch.float)
         for i in range(numSamples):
@@ -157,7 +161,7 @@ class EmpiricalUncertaintyMethod(BasicCombinationMethod, ABC, Generic[C]):
                     means = self.regressor.predict(
                         self.imputator.impute(
                             self.mutate(validateFeatures, cacheKey, rand),
-                            copy=False
+                            copy=False, rand=rand, indices=indices
                         )
                     )
                     squaredError += ((means - validateTargets) ** 2).sum()
@@ -302,5 +306,6 @@ class ScaleMaxBetaVarianceMethod(BasicCombinationMethod):
     def name(self) -> str:
         return f"Beta Mean * {self.scale}"
 
-    def estimateUncertainty(self, features: Tensor, mean: Tensor, rand: Generator = None) -> Tensor:
+    def estimateUncertainty(self, features: Tensor, mean: Tensor, rand: Generator = None, indices: Tensor = None
+                            ) -> Tensor:
         return mean * (1 - mean) * self.scale

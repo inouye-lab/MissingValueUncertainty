@@ -7,6 +7,7 @@ import torch
 from overrides import override
 from torch import Tensor, Generator
 
+from .imputator import Imputator
 from ..serializer import loadValue, saveValue
 
 
@@ -113,3 +114,25 @@ class CachingBatchGenerator(BatchGenerator):
         batch = self.generator.createBatch(image, samples, index, rand)
         saveValue(batch.cpu(), batchPath, Tensor)
         return batch
+
+
+class SingleSampleImputator(Imputator):
+    """
+    Imputator that takes a single sample from a batch generator as the imputation.
+    """
+
+    generator: BatchGenerator
+    """Generator instance for gathering single sample estimations"""
+
+    def __init__(self, generator: BatchGenerator):
+        self.generator = generator
+
+    @property
+    @override
+    def name(self) -> str:
+        return f"Single Sample {self.generator.name} Imputation"
+
+    def _impute(self, features: Tensor, rand: Generator = None, indices: Tensor = None) -> None:
+        for i in range(features.shape[0]):
+            index = None if indices is None else indices[i]
+            features[i] = self.generator.createBatch(features, 1, index=index, rand=rand)
