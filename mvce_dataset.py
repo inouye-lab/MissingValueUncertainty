@@ -15,7 +15,7 @@ from mvu.explanation.actions import createActionSpace
 from mvu.explanation.calibration import CalibrationExperiment
 from mvu.explanation.moments import MethodOfMomentsDecisionMaker
 from mvu.logger import setupLogging
-from mvu.model.generator import SingleSampleImputator, CachingBatchGenerator
+from mvu.model.generator import SingleSampleImputator, CachingBatchGenerator, BatchMeanImputator
 from mvu.model.imputator import ZeroImputator
 from mvu.model.method import MonteCarloBatchMethod, BasicCombinationMethod, ScaleMaxBetaVarianceMethod, Method
 from mvu.model.regressor import Regressor
@@ -37,7 +37,7 @@ if __name__ == '__main__':
 
     # experiment parameters
     parser.add_argument("--threads", type=int, default=-1, help='Number of worker threads to run')
-    parser.add_argument("--generator_samples", type=int, nargs='*',
+    parser.add_argument("--generator_samples", type=int, nargs='*', default=[],
                         help="Monte Carlo samples to take from the generator. If given multiple, adds each.")
     parser.add_argument("--decision_samples", type=int, default=1000,
                         help="Monte Carlo samples to take from the decision distribution. Used for all models")
@@ -55,6 +55,8 @@ if __name__ == '__main__':
                         help="List of action spaces to consider.")
     parser.add_argument("--batch_size", type=int, default=100,
                         help="Batch size for experiments")
+    parser.add_argument("--batch_mean_imputation", nargs='*', type=int, default=[],
+                        help="Batch sizes for the generator batch mean method")
     # MVCE
     parser.add_argument('--buckets', type=int, default=10,
                         help='Number of buckets for calibration error calculations')
@@ -108,7 +110,7 @@ if __name__ == '__main__':
                      "conditional gaussian. Running all imputators with zero variance.")
         for scale in args.beta_variance_scales:
             logging.info(f"Running all baseline imputators with {scale} scaled beta max variance.")
-        for imputator in [ZeroImputator(), SingleSampleImputator(generator)]:
+        for imputator in [ZeroImputator(), *[BatchMeanImputator(generator, size) for size in args.batch_mean_imputation]]:
             if args.zero_imputation:
                 methods.append(BasicCombinationMethod(classifier, imputator))
             for scale in args.beta_variance_scales:

@@ -152,3 +152,32 @@ class SingleSampleImputator(Imputator):
     @override
     def supportsIndices(self, indices: Tensor) -> Tensor:
         return self.generator.supportsIndices(indices)
+
+
+class BatchMeanImputator(Imputator):
+    """
+    Imputator that takes a single sample from a batch generator as the imputation.
+    """
+
+    generator: BatchGenerator
+    """Generator instance for gathering single sample estimations"""
+    batchSize: int
+    """Number of samples to take for the sample mean"""
+
+    def __init__(self, generator: BatchGenerator, batchSize: int):
+        self.generator = generator
+        self.batchSize = batchSize
+
+    @property
+    @override
+    def name(self) -> str:
+        return f"{self.batchSize} Sample Mean {self.generator.name} Imputation"
+
+    def _impute(self, features: Tensor, rand: Generator = None, indices: Tensor = None) -> None:
+        for i in range(features.shape[0]):
+            index = None if indices is None else indices[i]
+            features[i] = self.generator.createBatch(features[i], self.batchSize, index=index, rand=rand).mean(dim=0)
+
+    @override
+    def supportsIndices(self, indices: Tensor) -> Tensor:
+        return self.generator.supportsIndices(indices)
