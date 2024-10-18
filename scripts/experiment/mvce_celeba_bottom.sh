@@ -21,4 +21,4 @@ python mvce_dataset.py celeba --output ./results/mvce/bottom/$feature/ --generat
     --cuda_index 1 \
     --mask bottom --cache_directory ../../datasets/CelebAMask/cache/256/bottom_batches \
     --beta_variance_scales 0.5 0.99 --zero_imputation \
-    --action_spaces zero-one aleatoric --threads 4 --trials 4
+    --action_spaces zero-one '{"name":"aleatoric", "constantLoss": 0.4}' --threads 4 --trials 4
