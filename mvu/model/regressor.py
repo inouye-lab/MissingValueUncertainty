@@ -7,9 +7,10 @@ import torch
 from overrides import override
 from sklearn.linear_model import Ridge
 from torch import Tensor
-from torch.nn import Module, MSELoss, Sigmoid
+from torch.nn import Module, MSELoss, Sigmoid, BCEWithLogitsLoss, CrossEntropyLoss
 from torch.nn.functional import sigmoid
 from torch.utils.data import DataLoader
+#from mvu.util import jsonOrString, process_tensor# Adding the extra function here
 
 from ..dataset.csv import CsvDataset, CsvDatasetSplits
 from ..serializer import SerializerMixin
@@ -46,7 +47,7 @@ class Regressor(SerializerMixin, ABC):
         return torch.mean((predicted - dataset.targets) ** 2)
 
     @torch.no_grad()
-    def evaluateDataloader(self, data: DataLoader, device: torch.device = None, lossFunction: callable = None
+    def evaluateDataloader(self, data: DataLoader, device: torch.device = None, lossFunction: callable = None, seed: int = None
                            ) -> Tensor:
         """
         Evaluates the model on the given dataset and logs the final MSE
@@ -62,6 +63,8 @@ class Regressor(SerializerMixin, ABC):
         totalBatches = len(data)
         startTime = perf_counter()
         for batchIndex, (features, targets) in enumerate(data):
+            if lossFunction == CrossEntropyLoss():
+                targets = process_tensor(targets, seed_local=seed)
             if device is not None:
                 features = features.to(device)
                 targets = targets.to(device)
@@ -78,7 +81,7 @@ class Regressor(SerializerMixin, ABC):
         return torch.tensor([totalLoss / totalBatches])
 
     @torch.no_grad()
-    def evaluateAccDataloader(self, data: DataLoader, device: torch.device = None, lossFunction: callable = None
+    def evaluateAccDataloader(self, data: DataLoader, device: torch.device = None, lossFunction: callable = None, seed: int = None
                            ) -> Tensor:
         """
         Evaluates the model on the given dataset and logs the final MSE
@@ -94,6 +97,8 @@ class Regressor(SerializerMixin, ABC):
         totalBatches = len(data)
         startTime = perf_counter()
         for batchIndex, (features, targets) in enumerate(data):
+            if lossFunction == CrossEntropyLoss():
+                targets = process_tensor(targets, seed_local=seed)
             if device is not None:
                 features = features.to(device)
                 targets = targets.to(device)

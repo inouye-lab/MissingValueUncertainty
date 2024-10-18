@@ -7,7 +7,7 @@ import torch
 from torch import Tensor, device
 from torch.utils.data import DataLoader
 
-from .model.regressor import Regressor
+from mvu.model.regressor import Regressor
 
 
 @torch.no_grad()
@@ -93,3 +93,30 @@ def selectDevice(cuda_index: int) -> device:
         logging.info(f"Using {device} for tensor calculations, cuda available: {torch.cuda.is_available()}")
 
     return device
+
+def process_tensor(target_attr, seed_local=None):
+    # Create a generator for local seed control
+    rng = torch.Generator()
+
+    if seed_local is not None:
+        rng.manual_seed(seed_local)  # Set the seed for this generator only
+
+    for i in range(target_attr.size(0)):  # Iterate over rows
+        row = target_attr[i]
+        ones_count = row.sum().item()  # Count the number of 1s in the row
+
+        if ones_count > 1:
+            # Find indices of 1s
+            one_indices = (row == 1).nonzero(as_tuple=True)[0]
+            # Randomly select one index to keep as 1, using the local generator
+            keep_index = one_indices[torch.randint(0, int(ones_count), (1,), generator=rng).item()]
+            # Set all other indices to 0
+            row.fill_(0)
+            row[keep_index] = 1
+        elif ones_count == 0:
+            # Randomly select one index to set as 1, using the local generator
+            random_index = torch.randint(0, int(row.size(0)), (1,), generator=rng).item()
+            row[random_index] = 1
+        # If ones_count == 1, do nothing
+
+    return target_attr

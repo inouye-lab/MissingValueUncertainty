@@ -8,7 +8,7 @@ from time import perf_counter
 import torch
 import sys
 from torch import Tensor, Generator
-from torch.nn import BCELoss, MSELoss, BCEWithLogitsLoss
+from torch.nn import BCELoss, MSELoss, BCEWithLogitsLoss, CrossEntropyLoss
 from torch.optim import Adam
 from torch.utils.data import TensorDataset, random_split, Dataset, DataLoader,ConcatDataset
 
@@ -16,12 +16,13 @@ from mvu.dataset.loader import getDatasetSplits
 from mvu.logger import setupLogging
 from mvu.model.loader import createRegressorFromJson
 from mvu.model.regressor import NeuralNetworkRegressor
-from mvu.util import jsonOrString
+from mvu.util import jsonOrString, process_tensor # Adding the extra function here
 from mvu.dataset.mutators import createMask, SpecificFeatureRemovingDataset
 
 import wandb
 
 
+# Set the random seed locally for reproducibility without affecting global seed
 def split_dataset(dataset, n):
     dataset_len = len(dataset)
     part_len = dataset_len // n  # Base length of each part
@@ -88,14 +89,14 @@ if __name__ == '__main__':
     # image processing
     parser.add_argument("--mask", type=json.loads, default = json.loads('["full", "top", "bottom"]'), help="Name of the mask to use")
     #WandB
-    parser.add_argument('--no_wandb', action='store_true', default=True)
+    parser.add_argument('--wandb_username', type=str, default=None)
 
 
     args = parser.parse_args()
 
     ######  Weight and biases logging ############
-    if not(args.no_wandb):
-        wandb.init(project="MissingValueTesting", entity="sganguli")
+    if args.wandb_username is not None:
+        wandb.init(project="MissingValueTesting", entity=args.wandb_username)
 
 
     # start logging
@@ -128,8 +129,8 @@ if __name__ == '__main__':
     logging.info(f"Network has {sum(p.numel() for p in model.nn.parameters() if p.requires_grad)} parameters")
 
     # other setup
-    #lossFunction = BCELoss() if args.classification else MSELoss()
-    lossFunction = BCEWithLogitsLoss() if args.classification else MSELoss()
+    #lossFunction = BCEWithLogitsLoss() if args.classification else MSELoss()
+    lossFunction = CrossEntropyLoss() if args.classification else MSELoss()
     optimizer = Adam(model.nn.parameters(), lr=args.learning_rate)
 
     # device setup
@@ -141,20 +142,6 @@ if __name__ == '__main__':
     split_Traindatasets = split_dataset(ds.train, len(args.mask))
     split_TransformedTraindatasets = mask_split_dataset(split_Traindatasets,ds,args)
 
-    # for i, subset in enumerate(split_Traindatasets):
-    #     if args.mask[i] == "full":
-    #         print("full")
-    #         withMissing = subset
-    #     elif args.mask[i] == "top":
-    #         print("top")
-    #         mask = createMask(ds.metadata, "top")
-    #         withMissing = SpecificFeatureRemovingDataset(subset, mask, 0.0)
-    #     else:
-    #         print("bottom")
-    #         mask = createMask(ds.metadata, "bottom")
-    #         withMissing = SpecificFeatureRemovingDataset(subset, mask, 0.0)
-    #     split_TransformedTraindatasets.append(withMissing)
-
     combined_dataset = ConcatDataset(split_TransformedTraindatasets)
     ds.train = combined_dataset # Train dataset with a mix of corrupted and non-corrupted images #Better to have a local variable
 
@@ -162,23 +149,8 @@ if __name__ == '__main__':
 
 
     # TODO: different batch size?
-    #validateLoader = DataLoader(ds.validate, batch_size=args.batch_size, shuffle=False, generator=rand, pin_memory=True)
     split_Valdatasets = split_dataset(ds.validate, len(args.mask))
-    #split_TransformedValdatasets = []
     split_TransformedValdatasets = mask_split_dataset(split_Valdatasets, ds, args)
-    # for i, subset in enumerate(split_Valdatasets):
-    #     if args.mask[i] == "full":
-    #         print("full")
-    #         withMissing = subset
-    #     elif args.mask[i] == "top":
-    #         print("top")
-    #         mask = createMask(ds.metadata, "top")
-    #         withMissing = SpecificFeatureRemovingDataset(subset, mask, 0)
-    #     else:
-    #         print("bottom")
-    #         mask = createMask(ds.metadata, "bottom")
-    #         withMissing = SpecificFeatureRemovingDataset(subset, mask, 0)
-    #     split_TransformedValdatasets.append(withMissing)
 
     if len(args.mask) > 1:
         combined_dataset = ConcatDataset(split_TransformedValdatasets)
@@ -192,10 +164,10 @@ if __name__ == '__main__':
     # evaluate the initial model
     model.nn.eval()
     if args.evaluate_training:
-        trainingAccuracy = model.evaluateDataloader(dataLoader, device, lossFunction)
+        trainingAccuracy = model.evaluateDataloader(dataLoader, device, lossFunction, args.seed)
         logging.info(f"Initial training error {trainingAccuracy.mean().item()}")
 
-    validationError = model.evaluateDataloader(validateLoader[-1], device, lossFunction)
+    validationError = model.evaluateDataloader(validateLoader[-1], device, lossFunction, args.seed)
     validationBest = validationError.mean().item()
     logging.info(f"Initial validation error {validationError.mean().item()}")
 
@@ -214,6 +186,8 @@ if __name__ == '__main__':
         totalLoss = 0
         for batchIndex, (features, targets) in enumerate(dataLoader):
             features = features.to(device)
+            if lossFunction == CrossEntropyLoss():
+                targets = process_tensor(targets, seed_local=args.seed)
             targets = targets.to(device)
 
             optimizer.zero_grad()
@@ -239,32 +213,26 @@ if __name__ == '__main__':
         trainingErrorNet = trainingError.mean().item()
 
         #wandb.log({"train_loss": trainingError, "val_loss": valError}, step=i)
-        wandb.log({"train_loss": trainingError, "train_accuracy": trainAccuracyNet}, step=i)
+        if args.wandb_username is not None:
+            wandb.log({"train_loss": trainingError, "train_accuracy": trainAccuracyNet}, step=i)
 
-        for index, y in enumerate(validateLoader):
-            valAccuracy = model.evaluateAccDataloader(y, device, lossFunction)
-            valAccuracyNet = valAccuracy.mean().item()
+        if args.wandb_username is not None:
+            if i % 5 == 0:
+                for index, y in enumerate(validateLoader):
+                    valAccuracy = model.evaluateAccDataloader(y, device, lossFunction)
+                    valAccuracyNet = valAccuracy.mean().item()
 
-            valError = model.evaluateDataloader(y, device, lossFunction)
-            valErrorNet = valError.mean().item()
-            if index == 0:
-                wandb.log({"val_full_accuracy": valAccuracyNet, "val_full_loss": valError}, step=i)
-            elif index == 1:
-                wandb.log({"val_top_accuracy": valAccuracyNet, "val_top_loss": valError}, step=i)
-            elif index == 2:
-                wandb.log({"val_bottom_accuracy": valAccuracyNet, "val_bottom_loss": valError}, step=i)
-            else:
-                wandb.log({"val_All_accuracy": valAccuracyNet, "val_All_loss": valError}, step=i)
+                    valError = model.evaluateDataloader(y, device, lossFunction)
+                    valErrorNet = valError.mean().item()
+                    if index == 0:
+                        wandb.log({"val_full_accuracy": valAccuracyNet, "val_full_loss": valError}, step=i)
+                    elif index == 1:
+                        wandb.log({"val_top_accuracy": valAccuracyNet, "val_top_loss": valError}, step=i)
+                    elif index == 2:
+                        wandb.log({"val_bottom_accuracy": valAccuracyNet, "val_bottom_loss": valError}, step=i)
+                    else:
+                        wandb.log({"val_All_accuracy": valAccuracyNet, "val_All_loss": valError}, step=i)
 
-
-        #valAccuracy = model.evaluateAccDataloader(validateLoader, device, lossFunction)
-        # print(f"The valAccuracy is: {valAccuracy}")
-        # valAccuracyNet = valAccuracy.mean().item()
-        #
-        # valError = model.evaluateDataloader(validateLoader, device, lossFunction)
-        # valErrorNet = valError.mean().item()
-
-        print(f"The eopch count is: {i}")
 
 
 
@@ -333,4 +301,5 @@ if __name__ == '__main__':
     model.nn.to(device)
     model.evaluateDataLoaders(dataLoader, validateLoader, testLoader, device, lossFunction, "BCE" if args.classification else "MSE")
 
-    wandb.finish()
+    if args.wandb_username is not None:
+        wandb.finish()
