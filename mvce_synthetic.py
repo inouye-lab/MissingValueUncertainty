@@ -123,7 +123,7 @@ if __name__ == '__main__':
         covariance = gtParams.covariance * scale
         generators.append(ConditionalGaussianDistribution(None, GaussianParameters(
            gtParams.mean, covariance
-        ), name=f"{correlation} * Covariance"))
+        ), name=f"{scale} * Covariance"))
         logging.info(f"Adding {scale} scaled generator with {gtParams.mean} and covariance {covariance}")
     for shiftStr in args.mean_shifts:
         shift = [float(n) for n in shiftStr.split(',')]
