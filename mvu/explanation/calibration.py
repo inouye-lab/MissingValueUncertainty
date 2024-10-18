@@ -37,10 +37,15 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
     :param device:          Device to use for calculations
     :return:  Computed missing value calibration error
     """
+    time = perf_counter()
     bucketSizes = torch.zeros((buckets,), dtype=torch.int, device=device)
     bucketConfidence = torch.zeros((buckets,), dtype=torch.float, device=device)
     bucketConsistency = torch.zeros((buckets,), dtype=torch.float, device=device)
-    time = perf_counter()
+
+    bestActionCount = torch.zeros_like(actions, dtype=torch.int)
+    predictedActionCount = torch.zeros_like(actions, dtype=torch.int)
+    actionsLen = len(actions)
+    aleatoricIndex = actionsLen - 1  # TODO: this is messy
 
     for i, (cleanBatch, mutatedBatch) in enumerate(zip(cleanLoader, mutatedLoader)):
         mutatedFeatures = mutatedBatch[0]
@@ -97,6 +102,12 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
         # consistency metric: actions match best actions
         consistency = torch.eq(predActions, bestActions)
 
+        # map -1 to max+1 for aleatoric actions so we can count those
+        bestActions[bestActions == -1] = aleatoricIndex
+        predActions[predActions == -1] = aleatoricIndex
+        bestActionCount += bestActions.bincount(minlength=actionsLen)
+        predictedActionCount += predActions.bincount(minlength=actionsLen)
+
         # bucketSizes = indices.bincount(minlength = buckets)
         for bucket in range(buckets):
             bucketMask = bucketIndices == bucket
@@ -122,6 +133,9 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
         * Final bucket sizes: {bucketSizes.cpu()} totaling {totalSamples.cpu().item()} samples
         * Final bucket confidences: {bucketConfidence.cpu()}
         * Final bucket consistencies: {bucketConsistency.cpu()}
+        * Actions: {actions.cpu()}
+        * Best Action Counts: {bestActionCount.cpu()}
+        * Prediction Action Counts: {predictedActionCount.cpu()}
     """)
 
     # compute final MVCE metric
