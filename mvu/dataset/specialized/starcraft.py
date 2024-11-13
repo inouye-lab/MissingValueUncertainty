@@ -4,12 +4,13 @@ from typing import Tuple, List, Union, Dict
 
 import torch
 from overrides import override
-from sc2image import StarCraftImage
+from sc2image import StarCraftImage, StarCraftCIFAR10
 from torch import Tensor
 from torch.utils.data import Dataset, Subset
 
 from mvu.dataset.meta import ImageDatasetMeta
 from mvu.dataset.torch import TorchDatasetSplits
+from torchvision.transforms.functional import to_tensor
 
 
 class StarCraftDataset(Dataset[Tuple[Tensor, Tensor]]):
@@ -46,8 +47,25 @@ class StarCraftDataset(Dataset[Tuple[Tensor, Tensor]]):
         return (unitValues.float() / 255).reshape(-1), targets
 
 
+def createDataset(path: str, train: bool, image_format: str = 'bag-of-units-first', image_size: int = 64,
+                  targets: Union[str, List[str]] = None) -> Dataset:
+    if image_format == "cifar10":
+        assert image_size == 32, "StarCraft CIFAR10 requires image size of 32"
+        assert targets is not None, "StartCraft CIFAR10 does not support targets"
+        return StarCraftCIFAR10(
+            root=path,
+            train=train,
+            download=True,
+            transform=lambda image: (to_tensor(image).to(torch.float32) * 2) - 1
+        )
+    else:
+        # TODO: can directly use the original class likely
+        return StarCraftDataset(path, image_format, image_size, targets, train)
+
+
 def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = None,
                            validation_percent: float = 0.3, samples: Dict[str,int] = None,
+                           image_format: str = 'bag-of-units-first',
                            image_size: int = 64, sensor_size: int = 1) -> TorchDatasetSplits:
     """
     Creates the needed objects to use the starcraft dataset
@@ -55,6 +73,7 @@ def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = No
     :param targets:             Fields from metadata to use as the regression target, can be a string or list of strings
     :param validation_percent:  Percentage of training data to use for validation
     :param samples:             Maximum samples from the dataset to use for train, validate, and test.
+    :param image_format:        Format to use for the dataset, supports 'bag-of-units-first' and 'cifar10'
     :param image_size:          Size of the image in pixels
     :param sensor_size:         Size of sensors for making values missing
     :return:  Dataset instance
@@ -71,13 +90,12 @@ def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = No
 
     # create metadata using
     # TODO: can we reasonably support other image formats? for now hardcoding to 'bag-of-units-first'
-    imageFormat = 'bag-of-units-first'
     meta = ImageDatasetMeta("starcraft", targets, image_size, sensor_size, 3)
 
     # we only have train and test for starcraft, so split train into train and validation by percent
     # TODO: consider supporting seeded randomizing the split indices? prevent bias due to ordering in the set
-    trainingValidation = StarCraftDataset(path, imageFormat, image_size, targets, train=True)
-    testing = StarCraftDataset(path, imageFormat, image_size, targets, train=False)
+    trainingValidation = createDataset(path, True, image_format, image_size, targets)
+    testing = createDataset(path, False, image_format, image_size, targets)
 
     # handle limits, for quicker testing
     # no extra work if limits are not defined
