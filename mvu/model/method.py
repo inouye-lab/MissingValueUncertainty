@@ -61,7 +61,7 @@ class BasicCombinationMethod(Method):
                          not in any way that provides access to normally hidden data.
         :return: Vector of missing value variances of size `(samples,)`
         """
-        return torch.zeros((features.shape[INDEX_SAMPLE],), device=features.device)
+        return torch.zeros_like(mean)
 
     @override
     def predictWithUncertainty(self, features: Tensor, rand: Generator = None, indices: Tensor = None
