@@ -3,7 +3,7 @@ from typing import Tuple, Union, List
 import torch
 from overrides import override
 from torch import Tensor, Generator
-from torch.distributions import Distribution, Beta
+from torch.distributions import Distribution, Beta, Dirichlet
 
 from .decision import DecisionMaker, computeBestActions
 from .delta_dist import DeltaDistribution
@@ -38,8 +38,10 @@ def _toDistribution(mean: Tensor, var: Tensor, alpha: Tensor, beta: Tensor) -> D
     :param beta:    Scalar beta value. May be infinity if and only if variance is 0
     :return:  A delta distribution centered at the mean if the variance is 0, otherwise a beta distribution.
     """
-    if var <= 0:
+    if var.sum() <= 0:
         return DeltaDistribution(mean)
+    if len(alpha.shape) > 0:
+        return Dirichlet(alpha)
     return Beta(alpha, beta)
 
 
@@ -52,7 +54,7 @@ def estimateBetaDistributionFromMoments(mean: Tensor, var: Tensor) -> Union[Dist
     :return:  Single distribution if the input is scalar, or a list of distributions if the inputs are vectors
     """
     assert mean.shape == var.shape, "Mean and variance must be the same shape"
-    assert len(mean.shape) <= 1, "Mean must be a scalar or a vector"
+    assert len(mean.shape) <= 2, "Mean must be a scalar, a vector, or a matrix"
     alpha, beta = estimateBetaParametersFromMoments(mean, var)
 
     if len(mean.shape) == 0:
@@ -88,8 +90,8 @@ class MethodOfMomentsDecisionMaker(DecisionMaker):
         assert mean.shape[0] == inputSamples
         assert var.shape[0] == inputSamples
         distributions: List[Distribution] = self.momentMatcher(mean, var)
-        assert len(distributions) == inputSamples
         # TODO: not sure how to enforce the random state in torch distributions
+        assert len(distributions) == inputSamples
         phis = [dist.sample(self.size) for dist in distributions]
         return computeBestActions(phis, lossFunction, actions)
 

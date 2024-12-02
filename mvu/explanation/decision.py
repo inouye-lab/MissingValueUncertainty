@@ -17,8 +17,15 @@ def computeActionConfidence(phi: Tensor, lossFunction: callable, action: int, ac
     :param actions:       Tensor of all possible actions
     :return:  Probability that action dominates all other actions
     """
-    # compute loss for each action, outer product makes dimensions [sampleIdx, actionIdx]
-    allLoss = torch.outer(phi, lossFunction(1, actions)) + torch.outer(1 - phi, lossFunction(0, actions))
+    allLoss: Tensor
+    if len(phi.shape) == 1:
+        # compute loss for each action, outer product makes dimensions [sampleIdx, actionIdx]
+        allLoss = torch.outer(phi, lossFunction(1, actions)) + torch.outer(1 - phi, lossFunction(0, actions))
+    else:
+        allLoss = torch.zeros((phi.shape[0], actions.shape[0]))
+        for i in range(phi.shape[1]):
+            allLoss += torch.outer(phi[:, i], lossFunction(i, actions))
+
     # split loss into term for the main action and for all other actions
     # TODO: I feel like there should be a way to create an index tensor of "actions in set" instead of "action == value"
     # if we do that, actionLoss should also be a min expression instead of a squeeze
@@ -51,8 +58,15 @@ def computeBestAction(phi: Tensor, lossFunction: callable, actions: Tensor) -> T
     :param actions:       Tensor of all possible actions
     :return:  Best action tensor, and the confidence tensor of that action
     """
-    # compute loss for each action, outer product makes dimensions [sampleIdx, actionIdx]
-    allLoss = torch.outer(phi, lossFunction(1, actions)) + torch.outer(1 - phi, lossFunction(0, actions))
+    allLoss: Tensor
+    if len(phi.shape) == 1:
+        # compute loss for each action, outer product makes dimensions [sampleIdx, actionIdx]
+        allLoss = torch.outer(phi, lossFunction(1, actions)) + torch.outer(1 - phi, lossFunction(0, actions))
+    else:
+        allLoss = torch.zeros((phi.shape[0], actions.shape[0]), dtype=torch.float, device=phi.device)
+        for i in range(phi.shape[1]):
+            allLoss += torch.outer(phi[:, i], lossFunction(i, actions))
+
     # determine the number of times each action is the best using bincount
     bestCounts = allLoss.min(axis=1).indices.bincount(minlength=actions.shape[0])
     assert bestCounts.shape[0] == actions.shape[0]

@@ -32,7 +32,7 @@ if __name__ == '__main__':
     parser.add_argument("--output", type=str, default="./results/", help='Location to save result CSV')
 
     parser.add_argument("--classifier", type=str, help='Path to the pretrained regressor to load')
-    parser.add_argument("--classifier_feature", type=str,
+    parser.add_argument("--classifier_feature", type=str, default=None,
                         help='Feature index from the regressor to use, if -1 uses all features')
 
     # experiment parameters
@@ -53,6 +53,8 @@ if __name__ == '__main__':
     # action space
     parser.add_argument("--action_spaces", nargs='*', type=jsonOrName,
                         help="List of action spaces to consider.")
+    parser.add_argument("--class_count", type=int, default=1,
+                        help="Number of class actions to include in the dataset.")
     parser.add_argument("--batch_size", type=int, default=100,
                         help="Batch size for experiments")
     parser.add_argument("--batch_mean_imputation", nargs='*', type=int, default=[],
@@ -84,13 +86,13 @@ if __name__ == '__main__':
     classifier = Regressor.load(args.classifier)
     classifier.to(device)
 
-
     # load in dataset
     ds = getDatasetSplits(args.name, **args.dataset)
     logging.info(f"Using dataset {args.name} with {len(ds.test)} test samples")
     # TODO: generalize this code so other datasets can get original names
     assert isinstance(ds.test, CelebADataset)
-    classifier.setFeatureIndex(ds.test.attributes.originalNames.index(args.classifier_feature))
+    if args.classifier_feature is not None:
+        classifier.setFeatureIndex(ds.test.attributes.originalNames.index(args.classifier_feature))
 
     logging.info("Loading mask " + args.mask["name"])
     mask = createMask(ds.metadata, **args.mask)
@@ -98,7 +100,6 @@ if __name__ == '__main__':
 
     logging.info(f"Creating generator using cache at {args.cache_directory}")
     generator = CachingBatchGenerator(None, args.cache_directory, mask.to(device))
-
 
     # methods
     methods: List[Method] = [
@@ -127,7 +128,7 @@ if __name__ == '__main__':
     experiments: List[CalibrationExperiment] = []
     for actionParams in args.action_spaces:
         logging.info(f"Considering action space {actionParams['name']}")
-        lossFunction, actions = createActionSpace(size=1, device=device, **actionParams)
+        lossFunction, actions = createActionSpace(size=args.class_count, device=device, **actionParams)
         for decisionMaker in decisionMakers:
             experiments.append(CalibrationExperiment(
                 loaderClean, args.mask["name"], loaderMissing,
