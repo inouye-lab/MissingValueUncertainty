@@ -22,6 +22,7 @@ class StarCraftDataset(Dataset[Tuple[Tensor, Tensor]]):
     """Metadata variable to use as regression target"""
 
     def __init__(self, path: str, imageFormat: str, imageSize: int, targets: List[str], train: bool):
+        # TODO: support class instead of just targets, probably mutually exclusive
         self.base = StarCraftImage(path, image_format=imageFormat, image_size=imageSize, train=train,
                                    return_dict=True, use_metadata_cache=True, download=True)
         self.targets = targets
@@ -43,8 +44,7 @@ class StarCraftDataset(Dataset[Tuple[Tensor, Tensor]]):
             targets = torch.tensor([metadata[target] for target in self.targets])
         # expect vectors for the input instead of an image
         # we also convert to floats so we can actually place nan in the tensor for missingness
-        # TODO: should we be converting to a range of -1 to 1 instead of 0 to 1?
-        return (unitValues.float() / 255).reshape(-1), targets
+        return (unitValues.to(torch.float32) / 127.5) - 1, targets
 
 
 def createDataset(path: str, train: bool, image_format: str = 'bag-of-units-first', image_size: int = 64,
