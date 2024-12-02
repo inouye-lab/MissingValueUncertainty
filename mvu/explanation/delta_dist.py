@@ -65,7 +65,7 @@ class DeltaDistribution(Distribution):
 
     @override
     def rsample(self, sample_shape: torch.Size = torch.Size()) -> Tensor:
-        return self.loc.expand(sample_shape)
+        return self.loc.expand(*sample_shape, *self.loc.shape)
 
     @override
     def log_prob(self, value: Tensor) -> Tensor:
