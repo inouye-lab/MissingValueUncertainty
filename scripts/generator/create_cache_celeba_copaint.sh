@@ -1,4 +1,26 @@
 #!/bin/bash
+
+# fetch arguments before activating so they are not passed along
+split=$1
+cuda=$2
+mask=$3
+batch=''
+
+# optional split argument
+if [ $# -ge 4 ]; then
+  index=$4
+  shuffled=$split
+  # validation files named val TODO: make that not so
+  if [[ "$split" = "validation" ]]; then
+    shuffled="val"
+  fi
+  batch="\"${split}_list\": \"${shuffled}_shuffled_${index}_of_5.flist\","
+  shift
+fi
+shift
+shift
+shift
+
 # Generates the image cache for the CelebA dataset using the CoPaint diffusion model with the top mask
 source ../../miniconda/bin/activate
 conda activate ./venv
@@ -8,6 +30,7 @@ python create_generator_cache.py celeba \
       "path": "../../datasets/CelebAMask/256/img",
       "lists_root": "datasets/celeba",
       "attributes_path": "../../datasets/CelebAMask/1024/CelebAMask-HQ-attribute-anno.txt",
+      '"$batch"'
       "return_index": true
     }' \
     --generator '{
@@ -15,4 +38,6 @@ python create_generator_cache.py celeba \
       "diffusion_batch": 3,
       "model_path": "./models/checkpoints/celeba256_250000.pt"
     }' \
-    --samples 30 --cuda_index 0 --seed 1337 --mask top --cache_directory ../../datasets/CelebAMask/cache/256/top_batches
+    --split $split --mask $mask \
+    --samples 30 --cuda_index $cuda --seed 1337 \
+    --cache_directory "../../datasets/CelebAMask/cache/256/${mask}_${split}"

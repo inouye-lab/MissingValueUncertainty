@@ -6,6 +6,7 @@ from time import perf_counter
 
 import torch
 from torch import Generator
+from torch.utils.data import Dataset
 
 from mvu.dataset.loader import getDatasetSplits
 from mvu.dataset.mutators import createMask, SpecificFeatureRemovingDataset
@@ -19,6 +20,7 @@ if __name__ == '__main__':
 
     parser.add_argument("name", type=str, help='Name of the dataset to parse')
     parser.add_argument("--dataset", type=json.loads, default=dict(), help='Dataset arguments')
+    parser.add_argument("--split", type=str, default='test', help='Dataset split to use')
     parser.add_argument("--generator", type=jsonOrName, help='Generator to use')
     parser.add_argument("--cache_directory", type=str, help='Location to build the cache')
 
@@ -52,7 +54,17 @@ if __name__ == '__main__':
 
     logging.info("Loading mask")
     mask = createMask(ds.metadata, **args.mask)
-    withMissing = SpecificFeatureRemovingDataset(ds.test, mask)
+    dataset: Dataset
+    if args.split == 'test':
+        dataset = ds.test
+    elif args.split == 'train':
+        dataset = ds.train
+    elif args.split == 'validation':
+        dataset = ds.validate
+    else:
+        raise ValueError(f"Unknown dataset split {args.split}")
+    logging.info(f"Using {args.split} dataset split")
+    withMissing = SpecificFeatureRemovingDataset(dataset, mask)
 
     logging.info("Constructing generator")
     baseGenerator = createBatchGenerator(device=device, **args.generator)
