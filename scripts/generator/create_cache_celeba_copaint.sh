@@ -1,20 +1,31 @@
 #!/bin/bash
 
+# Print usage if unspecified
+if [ $# -le 2 ]; then
+  echo "Expected arguments: <split> <cuda> <mask> [batch] [groups] [diffusion_batch]"
+  exit 1
+fi
+
 # fetch arguments before activating so they are not passed along
 split=$1
 cuda=$2
 mask=$3
 batch=''
+groups=${5:-10}
+diffusionBatch=${6:-3}
 
 # optional split argument
 if [ $# -ge 4 ]; then
   index=$4
   shuffled=$split
-  # validation files named val TODO: make that not so
-  if [[ "$split" = "validation" ]]; then
-    shuffled="val"
+  batch="\"${split}_list\": \"${shuffled}/split_${index}_of_${groups}.flist\","
+  # drop optional arguments
+  if [ $# -ge 5 ]; then
+    if [ $# -ge 6 ]; then
+      shift
+    fi
+    shift
   fi
-  batch="\"${split}_list\": \"${shuffled}_shuffled_${index}_of_5.flist\","
   shift
 fi
 shift
@@ -35,7 +46,7 @@ python create_generator_cache.py celeba \
     }' \
     --generator '{
       "name": "gaussian-diffusion",
-      "diffusion_batch": 3,
+      "diffusion_batch": '"$diffusionBatch"',
       "model_path": "./models/checkpoints/celeba256_250000.pt"
     }' \
     --split $split --mask $mask \
