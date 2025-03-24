@@ -9,12 +9,11 @@ from torch.nn.functional import sigmoid, normalize
 
 
 class CrossEntropyProbabilityLoss(CrossEntropyLoss):
-    def __init__(self, *args, reduction='sum', **kwargs):
-        super().__init__(*args, reduction=reduction, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
     def forward(self, probs: Tensor, target: Tensor) -> Tensor:
         return super().forward(torch.log(probs), target)
-
 
 
 class DistributionLoss(Module):
