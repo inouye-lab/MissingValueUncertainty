@@ -3,7 +3,7 @@ from typing import TypeVar, Tuple, Optional, List
 
 from overrides import override
 from torch import Tensor, Generator
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, random_split, ConcatDataset
 
 from mvu.dataset.meta import DatasetMeta, ImageDatasetMeta
 
@@ -177,3 +177,36 @@ def createMask(meta: Optional[DatasetMeta], name: str, image_size: int = None, c
         raise ValueError(f"Unknown mask name '{name}'")
 
     return mask
+
+
+def splitDataset(dataset: Dataset, splits: int, rand: Generator = None) -> List[Dataset]:
+    """
+    Splits the dataset into the given number of parts
+    :param dataset:  Dataset to split
+    :param splits:   Number of subsets to create
+    :param rand:     Random state
+    :return:  List of split datasets
+    """
+    # noinspection PyTypeChecker
+    totalLength = len(dataset)
+    subsetLength = totalLength // splits
+    lengths = [subsetLength] * splits
+    # Adjust the last part to account for any remainder if the dataset is not divisible by n
+    remainder = totalLength % splits
+    for i in range(remainder):
+        lengths[i] += 1
+
+    return random_split(dataset, lengths, generator=rand)
+
+
+def distributeMasks(dataset: Dataset, masks: List[Tensor], rand: Generator = None, *args, **kwargs) -> Dataset:
+    """
+    Divides the dataset randomly between the list of masks
+    :param dataset:  Dataset to divide
+    :param masks:    List of masks
+    :param rand:     Random state
+    :return:  Dataset with masks applied to each part
+    """
+    subsets = splitDataset(dataset, len(masks), rand)
+    masked = [MaskedDataset(subset, mask, *args, **kwargs) for subset, mask in zip(subsets, masks)]
+    return ConcatDataset(masked)
