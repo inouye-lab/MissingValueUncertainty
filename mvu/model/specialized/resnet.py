@@ -1,4 +1,5 @@
-from torch import nn, Tensor, relu
+import torch
+from torch import nn, Tensor
 from torch.nn import Module, Conv2d
 from torchvision.models import resnet18, ResNet18_Weights
 
@@ -45,16 +46,40 @@ class Resnet18Classifier(Module):
         return features
 
 
-class Resnet18Dirchlet(Resnet18Classifier):
+def _createResnetConv2dWithMissing():
+    return Conv2d(4, 64, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+
+
+class Resnet18Dirichlet(Resnet18Classifier):
+    """
+    Resnet structure that inputs a 4 channel image (with missingness) and outputs a strength vector
+    """
+    def __init__(self, num_classes: int, minStrength: float = 1e-10, *args, **kwargs):
+        super().__init__(num_classes, *args, **kwargs)
+        # swap out first layer for one with 4 channels, 4th is missing
+        self.resnet.conv1 = _createResnetConv2dWithMissing()
+        self.minStrength = minStrength
+
+    def forward(self, features: Tensor):
+        # step 1: apply model
+        features = self.resnet(features)
+        # step 2: send strengths through a clamp
+        strengths = torch.clamp(features, min=self.minStrength)
+        # return the strengths alone
+        return strengths
+
+
+class Resnet18DirichletStrength(Resnet18Classifier):
     """
     Resnet structure that inputs a 4 channel image (with missingness) and outputs a probability vector plus strength.
     """
-    def __init__(self, num_classes: int, *args, **kwargs):
+    def __init__(self, num_classes: int, minStrength: float = 1e-10, *args, **kwargs):
         super().__init__(num_classes + 1, *args, **kwargs)
         # added an extra 1 class for the final fully connected layer
         self.numClasses = num_classes
         # swap out first layer for one with 4 channels, 4th is missing
-        self.resnet.conv1 = Conv2d(4, 64, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+        self.resnet.conv1 = _createResnetConv2dWithMissing()
+        self.minStrength = minStrength
 
     def forward(self, features: Tensor):
         # step 1: apply model
@@ -62,7 +87,7 @@ class Resnet18Dirchlet(Resnet18Classifier):
         # step 2: send num_classes features through the standard activation
         probabilities = self.activation(features[:, 0:self.numClasses])
         # step 3: send strength through a standard relu
-        strength = relu(features[:, self.numClasses:self.numClasses+1]).squeeze(dim=1)
+        strength = torch.clamp(features[:, self.numClasses], min=self.minStrength)
 
         # return the pair, lets the operator decide to multiply them or keep them separate
         return probabilities, strength
