@@ -1,5 +1,5 @@
 import torch
-from typing import TypeVar, Tuple, Optional
+from typing import TypeVar, Tuple, Optional, List
 
 from overrides import override
 from torch import Tensor, Generator
@@ -53,16 +53,20 @@ class MaskedDataset(DatasetWrapper[T_co]):
         self.combineChannels = combineChannels
         self.returnOriginal = returnOriginal
 
+    def _getFeaturesToDrop(self, item):
+        return self.featuresToDrop
+
     @override
     def __getitem__(self, item) -> Tuple[Tensor, ...]:
         data = self.base[item]
         original = data[0]
         features = original.clone()
-        features[self.featuresToDrop] = self.missingValue
+        featuresToDrop = self._getFeaturesToDrop(item)
+        features[featuresToDrop] = self.missingValue
         if self.includeMask:
             # start with a 1 mask, dropping requested features
             mask = torch.zeros_like(features)
-            mask[self.featuresToDrop] = 1
+            mask[featuresToDrop] = 1
             # next, squeeze it to remove first dimension if requested
             if self.combineChannels:
                 mask, _ = mask.max(dim=0, keepdim=True)
@@ -88,6 +92,27 @@ class MaskedDataset(DatasetWrapper[T_co]):
 
 
 SpecificFeatureRemovingDataset = MaskedDataset
+
+
+class RandomMaskedDataset(MaskedDataset):
+    """
+    Extension of `RandomMaskedDataset` which randomly removes one of a list of masks.
+    """
+
+    masks: List[Tensor]
+    """List of random masks to choose between"""
+    rand: Generator
+    """Generator for mask selection"""
+
+    def __init__(self, base: Dataset[T_co], masks: List[Tensor], rand: Generator = None, *args, **kwargs):
+        super().__init__(base, masks[0], *args, **kwargs)
+        assert len(masks) > 1, "Must have at least two masks to do a random mask"
+        self.masks = masks
+        self.rand = rand
+
+    @override
+    def _getFeaturesToDrop(self, item):
+        return self.masks[torch.randint(len(self.masks), (1,), generator=self.rand)]
 
 
 class FeatureCountRemovingDataset(DatasetWrapper[T_co]):
