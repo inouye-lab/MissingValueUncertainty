@@ -1,5 +1,5 @@
-from torch import nn, Tensor
-from torch.nn import Module
+from torch import nn, Tensor, relu
+from torch.nn import Module, Conv2d
 from torchvision.models import resnet18, ResNet18_Weights
 
 
@@ -43,4 +43,27 @@ class Resnet18Classifier(Module):
         # step 2: apply activation
         features = self.activation(features)
         return features
+
+
+class Resnet18Dirchlet(Resnet18Classifier):
+    """
+    Resnet structure that inputs a 4 channel image (with missingness) and outputs a probability vector plus strength.
+    """
+    def __init__(self, num_classes: int, *args, **kwargs):
+        super().__init__(num_classes + 1, *args, **kwargs)
+        # added an extra 1 class for the final fully connected layer
+        self.numClasses = num_classes
+        # swap out first layer for one with 4 channels, 4th is missing
+        self.resnet.conv1 = Conv2d(4, 64, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+
+    def forward(self, features: Tensor):
+        # step 1: apply model
+        features = self.resnet(features)
+        # step 2: send num_classes features through the standard activation
+        probabilities = self.activation(features[:, 0:self.numClasses])
+        # step 3: send strength through a standard relu
+        strength = relu(features[:, self.numClasses:self.numClasses+1]).squeeze(dim=1)
+
+        # return the pair, lets the operator decide to multiply them or keep them separate
+        return probabilities, strength
 
