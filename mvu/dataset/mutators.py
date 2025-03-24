@@ -35,18 +35,55 @@ class SpecificFeatureRemovingDataset(DatasetWrapper[T_co]):
 
     featuresToDrop: Tensor
     """Tensor of features to drop"""
+    missingValue: float
+    """Value to assign to the missing features"""
+    includeMask: bool
+    """If true, includes the mask in the feature tensor"""
+    combineChannels: bool
+    """If true, the mask will merge the first dimension into a single value, indicating any channel is missing"""
+    returnOriginal: bool
+    """If true, returns the original tensor alongside the masked tensor"""
 
-    def __init__(self, base: Dataset[T_co], featuresToDrop: Tensor):
+    def __init__(self, base: Dataset[T_co], featuresToDrop: Tensor, missingValue: float = torch.nan,
+                 includeMask: bool = False, combineChannels: bool = True, returnOriginal: bool = False):
         super().__init__(base)
         self.featuresToDrop = featuresToDrop
+        self.missingValue = missingValue
+        self.includeMask = includeMask
+        self.combineChannels = combineChannels
+        self.returnOriginal = returnOriginal
 
     @override
     def __getitem__(self, item) -> Tuple[Tensor, ...]:
         data = self.base[item]
-        features = data[0].clone()
-        features[self.featuresToDrop] = torch.nan
+        original = data[0]
+        features = original.clone()
+        features[self.featuresToDrop] = self.missingValue
+        if self.includeMask:
+            # start with a 1 mask, dropping requested features
+            mask = torch.zeros_like(features)
+            mask[self.featuresToDrop] = 1
+            # next, squeeze it to remove first dimension if requested
+            if self.combineChannels:
+                mask, _ = mask.max(dim=0, keepdim=True)
+                # finally, combine it with the features
+            features = torch.cat((features, mask), dim=0)
+
+        # return original tensor if requested, useful for training dirchlets
+        # PyRedundantParentheses not supported in python 3.6
+        if self.returnOriginal:
+            # if we are including the original and including masks, make sure to get the mask in the original
+            if self.includeMask:
+                mask: Tensor
+                if self.combineChannels:
+                    mask = torch.zeros_like(original[0]).unsqueeze(0)
+                else:
+                    mask = torch.zeros_like(original)
+                original = torch.cat((original, mask), dim=0)
+
+            # noinspection PyRedundantParentheses
+            return (features, original, *data[1:])
         # noinspection PyRedundantParentheses
-        # not supported in python 3.6
         return (features, *data[1:])
 
 
