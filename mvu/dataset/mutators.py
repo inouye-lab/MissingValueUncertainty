@@ -27,14 +27,14 @@ class DatasetWrapper(Dataset[T_co]):
         return len(self.base)
 
 
-class SpecificFeatureRemovingDataset(DatasetWrapper[T_co]):
+class MaskedDataset(DatasetWrapper[T_co]):
     """
     Dataset that removes all features matching the passed tensor.
     Expects base to be a tensor dataset of `(features, targets)`.
     """
 
     featuresToDrop: Tensor
-    """Tensor of features to drop"""
+    """Tensor of features to drop. Should be the same dimension as a single sample features"""
     missingValue: float
     """Value to assign to the missing features"""
     includeMask: bool
@@ -85,6 +85,9 @@ class SpecificFeatureRemovingDataset(DatasetWrapper[T_co]):
             return (features, original, *data[1:])
         # noinspection PyRedundantParentheses
         return (features, *data[1:])
+
+
+SpecificFeatureRemovingDataset = MaskedDataset
 
 
 class FeatureCountRemovingDataset(DatasetWrapper[T_co]):
