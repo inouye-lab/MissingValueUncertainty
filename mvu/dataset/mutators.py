@@ -170,8 +170,10 @@ def createMask(meta: Optional[DatasetMeta], name: str, image_size: int = None, c
         mask[:, 0:image_size // 2, :] = True
     elif name == "bottom":
         mask[:, image_size // 2:image_size, :] = True
+    elif name == "full":
+        mask[:] = True
 
-    else:
+    elif name != "none":
         raise ValueError(f"Unknown mask name '{name}'")
 
     return mask
