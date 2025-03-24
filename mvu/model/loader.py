@@ -7,11 +7,19 @@ from torch.nn import Linear, ReLU, Flatten, Sequential, Module
 from .diffusion import GaussianDiffusionBatchGenerator
 from .generator import BatchGenerator
 from .regressor import NeuralNetworkRegressor
-from .specialized.resnet import Resnet18Classifier
+from .specialized.resnet import Resnet18Classifier, Resnet18Dirichlet, Resnet18DirichletStrength
 from .specialized.image import ImageRegressor
 from ..dataset.meta import ImageDatasetMeta
 from ..dataset.torch import TorchDatasetSplits
 
+def _ensureNumClassesSet(name: str, ds: TorchDatasetSplits, kwargs: Dict):
+        # if not set, use the dataset for info on number of classes
+    if "num_classes" not in kwargs:
+        if isinstance(ds.metadata.target, list):
+            kwargs["num_classes"] = len(ds.metadata.target)
+        else:
+            kwargs["num_classes"] = 1
+    logging.info(f"Constructing {name} with {kwargs['num_classes']} targets")
 
 def createRegressor(ds: TorchDatasetSplits, name, **kwargs) -> NeuralNetworkRegressor:
     """
@@ -31,19 +39,20 @@ def createRegressor(ds: TorchDatasetSplits, name, **kwargs) -> NeuralNetworkRegr
         else:
             raise ValueError("image-regression requires the dataset metadata to also be image metadata")
     elif name == "resnet":
-        # if not set, use the dataset for info on number of classes
-        if "num_classes" not in kwargs:
-            if isinstance(ds.metadata.target, list):
-                kwargs["num_classes"] = len(ds.metadata.target)
-            else:
-                kwargs["num_classes"] = 1
-        logging.info(f"Constructing ResNet with {kwargs['num_classes']} targets")
+        _ensureNumClassesSet("ResNet", ds, kwargs)
         return NeuralNetworkRegressor(Resnet18Classifier(**kwargs))
+    elif name == "resnet_dirichlet":
+        _ensureNumClassesSet("ResNet Dirichlet", ds, kwargs)
+        return NeuralNetworkRegressor(Resnet18Dirichlet(**kwargs))
+    elif name == "resnet_dirichlet_strength":
+        _ensureNumClassesSet("ResNet Dirichlet Strength", ds, kwargs)
+        return NeuralNetworkRegressor(Resnet18DirichletStrength(**kwargs))
     elif name == "simple_fully_connected":
         lastSize = ds.metadata.numInputs
-        logging.info(f"Constructing model with input size {lastSize} and hidden layers {args.layers}")
+        layers = kwargs["layers"]
+        logging.info(f"Constructing model with input size {lastSize} and hidden layers {layers}")
         components: List[Module] = []
-        for layer in kwargs["layers"]:
+        for layer in layers:
             components.append(Linear(lastSize, layer))
             components.append(ReLU())
             lastSize = layer
