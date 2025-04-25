@@ -44,6 +44,8 @@ if __name__ == '__main__':
                         help='Number of times validation can get worse before stopping training')
     parser.add_argument("--evaluate_training", action='store_true',
                         help="If set, training accuracy is logged during validation. Useful for debugging patience.")
+    parser.add_argument('--masked_weight', type=float, default=0.5,
+                        help='Weight for the masked loss term')
     parser.add_argument('--dirichlet_weight', type=float, default=0.5,
                         help='Weight for the dirichlet loss term')
 
@@ -85,10 +87,10 @@ if __name__ == '__main__':
 
     # different loss function based on model architecture
     if isinstance(model.nn, Resnet18DirichletStrength):
-        lossFunction = DirichletStrengthLogitLoss(args.dirichlet_weight)
+        lossFunction = DirichletStrengthLogitLoss(args.masked_weight, args.dirichlet_weight)
         model.nn.activation = Identity()
     else:
-        lossFunction = DirichletLoss(args.dirichlet_weight)
+        lossFunction = DirichletLoss(args.masked_weight, args.dirichlet_weight)
 
     # other setup
     optimizer = Adam(model.nn.parameters(), lr=args.learning_rate)
