@@ -1,4 +1,4 @@
-from typing import Tuple, Union, List
+from typing import Tuple, Union, List, Optional
 
 import torch
 from overrides import override
@@ -45,17 +45,21 @@ def _toDistribution(mean: Tensor, var: Tensor, alpha: Tensor, beta: Tensor) -> D
     return Beta(alpha, beta)
 
 
-def estimateBetaDistributionFromMoments(mean: Tensor, var: Tensor) -> Union[Distribution, List[Distribution]]:
+def estimateBetaDistributionFromMoments(mean: Tensor, var: Tensor, scale: float = None) -> Union[Distribution, List[Distribution]]:
     """
     Converts the given mean and variances into a distribution.
     Will map to a beta distribution if the variance is non-zero, or a delta distribution if zero.
     :param mean:  Mean tensor, can be scalar or a vector.
     :param var:   Variance tensor, must be the same size as mean.
+    :param scale: Scaling constant for the alpha and beta parameters.
     :return:  Single distribution if the input is scalar, or a list of distributions if the inputs are vectors
     """
     assert mean.shape == var.shape, "Mean and variance must be the same shape"
     assert len(mean.shape) <= 2, "Mean must be a scalar, a vector, or a matrix"
     alpha, beta = estimateBetaParametersFromMoments(mean, var)
+    if scale is not None:
+        alpha *= scale
+        beta *= scale
 
     if len(mean.shape) == 0:
         return _toDistribution(mean, var, alpha, beta)
@@ -76,11 +80,14 @@ class MethodOfMomentsDecisionMaker(DecisionMaker):
     Method matching a tensor of means and a tensor of variances to a distribution (for shape size 0)
     or a list of distributions (for shape size 1). See `estimateBetaDistributionFromMoments`.
     """
+    scale: Optional[float]
+    """Scaling constant for the alpha and beta parameters."""
 
-    def __init__(self, method: Method, distSamples: int, momentMatcher: callable = estimateBetaDistributionFromMoments):
+    def __init__(self, method: Method, distSamples: int, momentMatcher: callable = estimateBetaDistributionFromMoments, scale: float = None):
         self.method = method
         self.size = torch.Size((distSamples,))
         self.momentMatcher = momentMatcher
+        self.scale = scale
 
     @override
     def estimateBestAction(self, features: Tensor, lossFunction: callable, actions: Tensor, rand: Generator = None,
@@ -89,7 +96,7 @@ class MethodOfMomentsDecisionMaker(DecisionMaker):
         mean, var = self.method.predictWithUncertainty(features, rand=rand, indices=indices)
         assert mean.shape[0] == inputSamples
         assert var.shape[0] == inputSamples
-        distributions: List[Distribution] = self.momentMatcher(mean, var)
+        distributions: List[Distribution] = self.momentMatcher(mean, var, self.scale)
         # TODO: not sure how to enforce the random state in torch distributions
         assert len(distributions) == inputSamples
         phis = [dist.sample(self.size) for dist in distributions]
