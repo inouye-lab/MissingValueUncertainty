@@ -21,7 +21,7 @@ from mvu.model.method import Method, BasicCombinationMethod, EmpiricalUncertaint
 from mvu.dataset.mutators import SpecificFeatureRemovingDataset, FeatureCountRemovingDataset
 from mvu.model.regressor import Regressor
 from mvu.util import estimateResidual, selectDevice
-from mvu.threading import distributeTasks
+from mvu.threading_utils import distributeTasks
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

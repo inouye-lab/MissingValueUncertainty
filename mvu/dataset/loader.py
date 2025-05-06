@@ -4,7 +4,7 @@ from typing import Dict, Union, Optional
 from .csv import CsvDatasetSplits
 from .specialized.celeba import createCelebADataset
 from .specialized.starcraft import createStarCraftDataset
-from .torch import TorchDatasetSplits
+from .torch_utils import TorchDatasetSplits
 
 
 def getDatasetSplits(name: str, path: str = None, **kwargs) -> TorchDatasetSplits:

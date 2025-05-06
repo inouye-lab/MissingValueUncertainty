@@ -6,7 +6,7 @@ import torch
 from torch import Tensor, Generator
 from torch.utils.data import TensorDataset
 
-from .torch import TorchDatasetSplits
+from .torch_utils import TorchDatasetSplits
 from ..dataset.meta import DatasetMeta, INDEX_SAMPLE, INDEX_FEATURE
 from ..serializer import SerializerMixin
 

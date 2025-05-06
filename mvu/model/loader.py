@@ -10,7 +10,7 @@ from .regressor import NeuralNetworkRegressor
 from .specialized.resnet import Resnet18Classifier, Resnet18Dirichlet, Resnet18DirichletStrength
 from .specialized.image import ImageRegressor
 from ..dataset.meta import ImageDatasetMeta
-from ..dataset.torch import TorchDatasetSplits
+from ..dataset.torch_utils import TorchDatasetSplits
 
 def _ensureNumClassesSet(name: str, ds: TorchDatasetSplits, kwargs: Dict):
         # if not set, use the dataset for info on number of classes

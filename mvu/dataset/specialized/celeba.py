@@ -9,7 +9,7 @@ from torch.utils.data import Dataset
 
 from ..image import ImagePathDataset
 from ..meta import ImageDatasetMeta
-from ..torch import TorchDatasetSplits
+from ..torch_utils import TorchDatasetSplits
 
 
 class CelebAttributes:

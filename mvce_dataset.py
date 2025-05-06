@@ -19,7 +19,7 @@ from mvu.model.generator import SingleSampleImputator, CachingBatchGenerator, Ba
 from mvu.model.imputator import ZeroImputator
 from mvu.model.method import MonteCarloBatchMethod, BasicCombinationMethod, ScaleMaxBetaVarianceMethod, Method
 from mvu.model.regressor import Regressor
-from mvu.threading import distributeTasks
+from mvu.threading_utils import distributeTasks
 from mvu.util import selectDevice, jsonOrName
 
 if __name__ == '__main__':

@@ -8,8 +8,8 @@ from sc2image import StarCraftImage, StarCraftCIFAR10
 from torch import Tensor
 from torch.utils.data import Dataset, Subset
 
-from mvu.dataset.meta import ImageDatasetMeta
-from mvu.dataset.torch import TorchDatasetSplits
+from ..meta import ImageDatasetMeta
+from ..torch_utils import TorchDatasetSplits
 from torchvision.transforms.functional import to_tensor
 
 
