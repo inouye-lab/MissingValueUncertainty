@@ -135,4 +135,4 @@ class DirichletStrengthLogitLoss(DirichletStrengthLoss):
 
     @override
     def _toProbability(self, cleanResult: Tensor):
-        return sigmoid(cleanResult)
+        return torch.exp(cleanResult)
