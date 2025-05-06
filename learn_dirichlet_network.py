@@ -11,6 +11,7 @@ from torch.nn import Identity
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 
+from dataset.mutators import IncludeMask
 from mvu.dataset.loader import getDatasetSplits
 from mvu.dataset.mutators import createMask, RandomMaskedDataset, distributeMasks
 from mvu.logger import setupLogging
@@ -48,6 +49,7 @@ if __name__ == '__main__':
                         help='Weight for the masked loss term')
     parser.add_argument('--dirichlet_weight', type=float, default=0.5,
                         help='Weight for the dirichlet loss term')
+    parser.add_argument("--teacher", type=str, default=None, help='Path to the pretrained regressor to load')
 
     # model parameters
     parser.add_argument("--input", type=str, default=None, help='Input model to continue training')
@@ -69,6 +71,9 @@ if __name__ == '__main__':
     rand = Generator()
     rand.manual_seed(args.seed)
 
+    # device setup
+    device = selectDevice(args.cuda_index)
+
     # construct model
     logging.info("Constructing neural network")
     model: NeuralNetworkRegressor
@@ -82,6 +87,14 @@ if __name__ == '__main__':
     else:
         logging.error("Must set either input or architecture")
         exit(1)
+    model.to(device)
+
+    if args.teacher is not None:
+        teacher = NeuralNetworkRegressor.load(args.classifier)
+        teacher.to(device)
+        teacher.nn.eval()
+    else:
+        teacher = model
 
     logging.info(f"Network has {sum(p.numel() for p in model.nn.parameters() if p.requires_grad)} parameters")
 
@@ -95,9 +108,6 @@ if __name__ == '__main__':
     # other setup
     optimizer = Adam(model.nn.parameters(), lr=args.learning_rate)
 
-    # device setup
-    device = selectDevice(args.cuda_index)
-    model.to(device)
 
     # setup mutator
     masks = [createMask(ds.metadata, **mask) for mask in args.masks]
@@ -116,7 +126,7 @@ if __name__ == '__main__':
         cleanFeatures = cleanFeatures.to(device)
         targets = targets.to(device)
         maskedPrediction = model.predict(maskedFeatures)
-        cleanPrediction = model.predict(cleanFeatures)
+        cleanPrediction = teacher.predict(cleanFeatures)
         # might at that point want multiple loss function support
         loss = lossFunction(cleanPrediction, maskedPrediction, targets).item()
         return loss, targets.shape[0]
@@ -152,7 +162,10 @@ if __name__ == '__main__':
             optimizer.zero_grad()
 
             maskedPrediction = model.predictWithGradient(maskedFeatures)
-            cleanPrediction = model.predictWithGradient(cleanFeatures)
+            if args.teacher is None:
+                cleanPrediction = model.predictWithGradient(cleanFeatures)
+            else:
+                cleanPrediction = teacher.predict(cleanFeatures)
             loss: Tensor = lossFunction(cleanPrediction, maskedPrediction, targets)
             loss.backward()
             optimizer.step()
@@ -210,7 +223,8 @@ if __name__ == '__main__':
 
     # final evaluation of the model (done after saving as we don't need the result to save, and it might be slow)
     model.nn.to(device)
-    maskedTest = distributeMasks(ds.test, masks, rand, missingValue=0, includeMask=True, returnOriginal=True)
+    maskedTest = distributeMasks(ds.test, masks, rand, missingValue=0, returnOriginal=True,
+                                 includeMask=IncludeMask.ALWAYS if args.teacher is None else IncludeMask.MISSING)
     testLoader = DataLoader(maskedTest, batch_size=args.batch_size, shuffle=False, generator=rand, pin_memory=True)
     for (name, loader) in [("train", trainLoader), ("validate", validateLoader), ("test", testLoader)]:
         result = Regressor.evaluateData(loader, batchHandler)

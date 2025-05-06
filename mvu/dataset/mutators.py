@@ -1,5 +1,7 @@
 import torch
-from typing import TypeVar, Tuple, Optional, List
+from enum import Enum
+
+from typing import TypeVar, Tuple, Optional, List, Union
 
 from overrides import override
 from torch import Tensor, Generator
@@ -27,6 +29,24 @@ class DatasetWrapper(Dataset[T_co]):
         return len(self.base)
 
 
+class IncludeMask(Enum):
+    NONE = 0
+    """Mask is never included"""
+    MISSING = 1
+    """Mask is only included for the missing feature"""
+    ALWAYS = 2
+    """Mask is always included"""
+
+    # noinspection PySimplifyBooleanCheck
+    @staticmethod
+    def convert(includeMask: Union["IncludeMask",bool]):
+        if includeMask == True:
+            return IncludeMask.ALWAYS
+        if includeMask == False:
+            return IncludeMask.NONE
+        return includeMask
+
+
 class MaskedDataset(DatasetWrapper[T_co]):
     """
     Dataset that removes all features matching the passed tensor.
@@ -37,7 +57,7 @@ class MaskedDataset(DatasetWrapper[T_co]):
     """Tensor of features to drop. Should be the same dimension as a single sample features"""
     missingValue: float
     """Value to assign to the missing features"""
-    includeMask: bool
+    includeMask: IncludeMask
     """If true, includes the mask in the feature tensor"""
     combineChannels: bool
     """If true, the mask will merge the first dimension into a single value, indicating any channel is missing"""
@@ -45,7 +65,7 @@ class MaskedDataset(DatasetWrapper[T_co]):
     """If true, returns the original tensor alongside the masked tensor"""
 
     def __init__(self, base: Dataset[T_co], featuresToDrop: Tensor, missingValue: float = torch.nan,
-                 includeMask: bool = False, combineChannels: bool = True, returnOriginal: bool = False):
+                 includeMask: Union[IncludeMask,bool] = IncludeMask.NONE, combineChannels: bool = True, returnOriginal: bool = False):
         super().__init__(base)
         self.featuresToDrop = featuresToDrop
         self.missingValue = missingValue
@@ -63,7 +83,7 @@ class MaskedDataset(DatasetWrapper[T_co]):
         features = original.clone()
         featuresToDrop = self._getFeaturesToDrop(item)
         features[featuresToDrop] = self.missingValue
-        if self.includeMask:
+        if self.includeMask != IncludeMask.NONE:
             # start with a 1 mask, dropping requested features
             mask = torch.zeros_like(features)
             mask[featuresToDrop] = 1
@@ -77,7 +97,7 @@ class MaskedDataset(DatasetWrapper[T_co]):
         # PyRedundantParentheses not supported in python 3.6
         if self.returnOriginal:
             # if we are including the original and including masks, make sure to get the mask in the original
-            if self.includeMask:
+            if self.includeMask == IncludeMask.ALWAYS:
                 mask: Tensor
                 if self.combineChannels:
                     mask = torch.zeros_like(original[0]).unsqueeze(0)
