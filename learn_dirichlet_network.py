@@ -6,7 +6,7 @@ import os
 from time import perf_counter
 
 import torch
-from torch import Tensor, Generator
+from torch import Tensor, Generator, nn
 from torch.nn import Identity
 from torch.optim import Adam
 from torch.utils.data import DataLoader
@@ -97,6 +97,8 @@ if __name__ == '__main__':
         teacher = NeuralNetworkRegressor.load(args.teacher)
         teacher.to(device)
         teacher.nn.eval()
+        # TODO: is there a way to not hardcode this?
+        teacher.nn.activation = nn.Sigmoid()
     else:
         teacher = model
 
