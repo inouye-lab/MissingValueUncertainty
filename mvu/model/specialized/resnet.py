@@ -14,7 +14,7 @@ class Resnet18Classifier(Module):
     """Final activation function"""
 
     def __init__(self, num_classes: int, momentum: float = None, track_running_stats: bool = None,
-                 pretrained_weights: bool = True):
+                 pretrained_weights: bool = True, activation: str = "sigmoid"):
         """
         Creates a new instance of the classifier
         :param num_classes:            Number of output classes to use
@@ -36,7 +36,10 @@ class Resnet18Classifier(Module):
                         module.track_running_stats = track_running_stats
         self.numClasses = num_classes
         self.resnet.fc = nn.Linear(self.resnet.fc.in_features, num_classes)
-        self.activation = nn.Sigmoid()
+        if activation == "sigmoid":
+            self.activation = nn.Sigmoid()
+        elif activation == "identity":
+            self.activation = nn.Identity()
 
     def forward(self, features: Tensor):
         # step 1: apply model

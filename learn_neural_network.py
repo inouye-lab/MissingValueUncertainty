@@ -7,10 +7,10 @@ from time import perf_counter
 
 import torch
 from torch import Tensor, Generator
-from torch.nn import BCELoss, MSELoss
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 
+from mvu.model.loss import createLoss
 from mvu.dataset.loader import getDatasetSplits
 from mvu.logger import setupLogging
 from mvu.model.loader import createRegressorFromJson
@@ -42,6 +42,7 @@ if __name__ == '__main__':
                         help="If set, runs in classification mode.")
     parser.add_argument("--evaluate_training", action='store_true',
                         help="If set, training accuracy is logged during validation. Useful for debugging patience.")
+    parser.add_argument("--loss", type=str, default=None, help='Loss function to employ')
 
     # model parameters
     parser.add_argument("--input", type=str, default=None, help='Input model to continue training')
@@ -83,7 +84,7 @@ if __name__ == '__main__':
     logging.info(f"Network has {sum(p.numel() for p in model.nn.parameters() if p.requires_grad)} parameters")
 
     # other setup
-    lossFunction = BCELoss() if args.classification else MSELoss()
+    lossFunction = createLoss(args.loss, args.classification)
     optimizer = Adam(model.nn.parameters(), lr=args.learning_rate)
 
     # device setup

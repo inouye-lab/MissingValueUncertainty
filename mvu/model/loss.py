@@ -1,10 +1,10 @@
-from typing import Type, Tuple
+from typing import Type, Tuple, Optional
 
 import torch
 from overrides import override
 from torch import Tensor
 from torch.distributions import Distribution, Dirichlet
-from torch.nn import Module, CrossEntropyLoss
+from torch.nn import Module, CrossEntropyLoss, BCELoss, BCEWithLogitsLoss, MSELoss
 from torch.nn.functional import sigmoid, normalize
 
 
@@ -136,3 +136,24 @@ class DirichletStrengthLogitLoss(DirichletStrengthLoss):
     @override
     def _toProbability(self, cleanResult: Tensor):
         return torch.exp(cleanResult)
+
+def createLoss(name: Optional[str], classification: bool = True) -> callable:
+    """
+    Creates a loss function from command line parameters.
+    :param name:           Name of the loss function
+    :param classification: Uses classification loss when relevant, notably in defaults.
+    """
+    if name is None:
+        return BCELoss() if classification else MSELoss()
+    elif name == "BCE" or name == "BCEProbabilities":
+        return BCELoss()
+    elif name == "BCELogits":
+        return BCEWithLogitsLoss()
+    elif name == "MSE":
+        return MSELoss()
+    elif name == "CEProbabilities":
+        return CrossEntropyProbabilityLoss()
+    elif name == "CrossEntropy" or name == "CELogits":
+        return CrossEntropyLoss()
+    else:
+        raise ValueError(f"Unknown loss function '{name}'")
