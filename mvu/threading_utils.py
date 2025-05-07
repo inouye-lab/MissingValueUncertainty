@@ -30,6 +30,11 @@ class WorkQueue:
         """Not threadsafe method to add new task"""
         self._work.append(task)
 
+    @property
+    def remainingWork(self):
+        """Gets the number of tasks remaining in the work queue"""
+        return len(self._work)
+
 
 class Worker:
     """Thread that processes data from the work queue"""
@@ -50,6 +55,7 @@ class Worker:
             if task is None:
                 break
             else:
+                logging.debug(f"Starting task, {self.workQueue.remainingWork} tasks remaining in queue")
                 task()
         logging.info(f"Worker thread {self.index} stopping")
 
