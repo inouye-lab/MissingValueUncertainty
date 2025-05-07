@@ -60,7 +60,7 @@ class DistributionLoss(Module):
         if self.maskedWeight > 0:
             loss += self.probLoss(maskedResult, target) * self.maskedWeight
         if self.distWeight > 0:
-            distLoss = -self.distClass(*maskedParameters).log_prob(normalize(self._toProbability(cleanResult), p=1))
+            distLoss = -self.distClass(*maskedParameters).log_prob(self._toProbability(cleanResult))
             if self.reduction == "mean":
                 distLoss = distLoss.mean()
             elif self.reduction == "sum":
@@ -88,6 +88,10 @@ class DirichletLoss(DistributionLoss):
         :param target:        Target class from the dataset
         :return:  Combined loss
         """
+        # don't normalize if we have just 1 value
+        if cleanResult.shape[1] == 1:
+            cleanResult = torch.cat((1 - cleanResult, cleanResult), dim=1)
+        # normalize to ensure vector inputs are probability values
         return self._forward(
             normalize(cleanResult, p=1),
             normalize(maskedResult, p=1),
