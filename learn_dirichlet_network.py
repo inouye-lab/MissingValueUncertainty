@@ -11,7 +11,7 @@ from torch.nn import Identity
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 
-from dataset.mutators import IncludeMask
+from mvu.dataset.mutators import IncludeMask
 from mvu.dataset.loader import getDatasetSplits
 from mvu.dataset.mutators import createMask, RandomMaskedDataset, distributeMasks
 from mvu.logger import setupLogging
@@ -94,7 +94,7 @@ if __name__ == '__main__':
     model.to(device)
 
     if args.teacher is not None:
-        teacher = NeuralNetworkRegressor.load(args.classifier)
+        teacher = NeuralNetworkRegressor.load(args.teacher)
         teacher.to(device)
         teacher.nn.eval()
     else:
