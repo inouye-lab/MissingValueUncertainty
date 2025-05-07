@@ -15,7 +15,7 @@ from mvu.dataset.loader import getDatasetSplits
 from mvu.logger import setupLogging
 from mvu.model.loader import createRegressorFromJson
 from mvu.model.regressor import NeuralNetworkRegressor
-from mvu.util import jsonOrString
+from mvu.util import jsonOrString, selectDevice
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -26,8 +26,8 @@ if __name__ == '__main__':
     parser.add_argument("--output", type=str, default="./models/nn/", help='Location to save final regressor')
     parser.add_argument('--seed', type=int, default=1337, help='Seed for random permutations')
     parser.add_argument('-v', '--verbose', type=int, nargs='?', default=1, help='Logging verbosity level')
-    parser.add_argument("--force_cpu", action='store_true',
-                        help="If set, forces using the CPU for calculations instead of the GPU.")
+    parser.add_argument("--cuda_index", type=int, default=0,
+                        help="Index to use for CUDA, set to -1 to force CPU")
 
     # training
     parser.add_argument('--learning_rate', type=float, default=0.0001, help='Learning rate for Adam')
@@ -88,8 +88,7 @@ if __name__ == '__main__':
     optimizer = Adam(model.nn.parameters(), lr=args.learning_rate)
 
     # device setup
-    device = torch.device("cuda" if not args.force_cpu and torch.cuda.is_available() else "cpu")
-    logging.info(f"Using {device} for tensor calculations, cuda available: {torch.cuda.is_available()}")
+    device = selectDevice(args.cuda_index)
     model.to(device)
 
     # setup data loading
