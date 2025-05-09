@@ -64,7 +64,7 @@ class Resnet18Dirichlet(Resnet18Classifier):
     """
     Resnet structure that inputs a 4 channel image (with missingness) and outputs a strength vector
     """
-    def __init__(self, num_classes: int, minStrength: float = 1e-10, *args, **kwargs):
+    def __init__(self, num_classes: int, minStrength: float = 1e-35, *args, **kwargs):
         super().__init__(_flattenSingleClass(num_classes), *args, **kwargs)
         # swap out first layer for one with 4 channels, 4th is missing
         self.resnet.conv1 = _createResnetConv2dWithMissing()
@@ -73,8 +73,8 @@ class Resnet18Dirichlet(Resnet18Classifier):
     def forward(self, features: Tensor):
         # step 1: apply model
         strengths = self.resnet(features)
-        # step 2: send strengths through a clamp
-        strengths = torch.exp(strengths)
+        # step 2: send strengths through a exp. Clamp is just here for safety in case we go to small
+        strengths = torch.clamp(torch.exp(strengths), min=self.minStrength)
         # return the strengths alone
         return strengths
 
@@ -83,7 +83,7 @@ class Resnet18DirichletStrength(Resnet18Classifier):
     """
     Resnet structure that inputs a 4 channel image (with missingness) and outputs a probability vector plus strength.
     """
-    def __init__(self, num_classes: int, minStrength: float = 1e-10, *args, **kwargs):
+    def __init__(self, num_classes: int, minStrength: float = 1e-35, *args, **kwargs):
         self.numClasses = _flattenSingleClass(num_classes)
         # added an extra 1 class for the final fully connected layer
         super().__init__(self.numClasses + 1, *args, **kwargs)
