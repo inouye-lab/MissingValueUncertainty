@@ -69,7 +69,7 @@ class MaskedDataset(DatasetWrapper[T_co]):
         super().__init__(base)
         self.featuresToDrop = featuresToDrop
         self.missingValue = missingValue
-        self.includeMask = includeMask
+        self.includeMask = IncludeMask.convert(includeMask)
         self.combineChannels = combineChannels
         self.returnOriginal = returnOriginal
 

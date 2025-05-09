@@ -117,10 +117,12 @@ if __name__ == '__main__':
 
     # setup mutator
     masks = [createMask(ds.metadata, **mask) for mask in args.masks]
+    # when we have a teacher, don't give the teacher data with the mask
+    includeMask = IncludeMask.ALWAYS if args.teacher is None else IncludeMask.MISSING
     # for training, randomly choose mask
-    maskedTraining = RandomMaskedDataset(ds.train, masks, rand, missingValue=0, includeMask=True, returnOriginal=True)
+    maskedTraining = RandomMaskedDataset(ds.train, masks, rand, missingValue=0, includeMask=includeMask, returnOriginal=True)
     # for validation, split the set into parts using each mask
-    maskedValidation = distributeMasks(ds.validate, masks, rand, missingValue=0, includeMask=True, returnOriginal=True)
+    maskedValidation = distributeMasks(ds.validate, masks, rand, missingValue=0, includeMask=includeMask, returnOriginal=True)
 
     # setup data loading
     trainLoader    = DataLoader(maskedTraining,   batch_size=args.batch_size, shuffle=True,  generator=rand, pin_memory=True)
