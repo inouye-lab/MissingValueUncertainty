@@ -5,7 +5,7 @@ from overrides import override
 from torch import Tensor
 from torch.distributions import Distribution, Dirichlet
 from torch.nn import Module, CrossEntropyLoss, BCELoss, BCEWithLogitsLoss, MSELoss
-from torch.nn.functional import sigmoid, normalize
+from torch.nn.functional import normalize
 
 
 class CrossEntropyProbabilityLoss(CrossEntropyLoss):
@@ -42,10 +42,7 @@ class DistributionLoss(Module):
         self.cleanWeight = cleanWeight
         self.reduction = reduction
 
-    def _toProbability(self, cleanResult: Tensor):
-        return cleanResult
-
-    def _forward(self, cleanResult: Tensor, maskedResult: Tensor, maskedParameters: Tuple[Tensor], target: Tensor):
+    def _forward(self, cleanResult: Tensor, maskedResult: Tensor, maskedParameters: Tuple[Tensor], cleanProbability: Tensor, target: Tensor):
         """
         Runs the forward pass for this loss function
         :param cleanResult:          Result from the clean image
@@ -60,13 +57,28 @@ class DistributionLoss(Module):
         if self.maskedWeight > 0:
             loss += self.probLoss(maskedResult, target) * self.maskedWeight
         if self.distWeight > 0:
-            distLoss = -self.distClass(*maskedParameters).log_prob(self._toProbability(cleanResult))
+            # add in a small value to the probability to prevent infinities on perfect match
+            distLoss = -self.distClass(*maskedParameters).log_prob(cleanProbability + 1e-35)
             if self.reduction == "mean":
                 distLoss = distLoss.mean()
             elif self.reduction == "sum":
                 distLoss = distLoss.sum()
             loss += distLoss * self.distWeight
         return loss
+
+
+def _safeNormalize(tensor: Tensor) -> Tensor:
+    """Normalizes a vector without issue if the vector contains 0 or infinity"""
+    for i in range(tensor.shape[0]):
+        # if its all 0s, set it to all 1s before normalizing; treat as uniform
+        if torch.all(tensor[i] == 0):
+            tensor[i,:] = 1
+        # if it has infinity, clear non-infinity
+        inf = torch.isinf(tensor[i,:])
+        if torch.any(inf):
+            tensor[i, inf] = 1
+            tensor[i, ~inf] = 0
+    return normalize(tensor, p=1)
 
 
 class DirichletLoss(DistributionLoss):
@@ -88,14 +100,24 @@ class DirichletLoss(DistributionLoss):
         :param target:        Target class from the dataset
         :return:  Combined loss
         """
-        # don't normalize if we have just 1 value
+        # with just 1 value, our loss function likely expects size 1 tensors
+        # but the Dirchlet distribution wants size 2 tensors, so convert as needed
+        maskedProbability = _safeNormalize(maskedResult) if self.maskedWeight > 0 else None
+        cleanProbability: Tensor
         if cleanResult.shape[1] == 1:
+            cleanProbability = cleanResult
             cleanResult = torch.cat((1 - cleanResult, cleanResult), dim=1)
+            if self.maskedWeight > 0:
+                maskedProbability = maskedProbability[:,1].unsqueeze(dim=1)
+        else:
+            cleanResult = _safeNormalize(cleanResult)
+            cleanProbability = cleanResult
         # normalize to ensure vector inputs are probability values
         return self._forward(
-            normalize(cleanResult, p=1),
-            normalize(maskedResult, p=1),
+            cleanProbability,
+            maskedProbability,
             (maskedResult,),
+            cleanResult,
             target
         )
 
@@ -110,6 +132,9 @@ class DirichletStrengthLoss(DistributionLoss):
                  reduction: str = "mean"):
         super().__init__(cleanLoss, Dirichlet, maskedWeight, distWeight, cleanWeight, reduction)
 
+    def _toProbability(self, cleanResult: Tensor):
+        return cleanResult
+
     def forward(self, cleanResult: Tuple[Tensor], maskedResult: Tuple[Tensor], target: Tensor):
         """
         Runs the forward pass for this loss function
@@ -122,6 +147,7 @@ class DirichletStrengthLoss(DistributionLoss):
             cleanResult[0],
             maskedResult[0],
             (self._toProbability(maskedResult[0]) * maskedResult[1].unsqueeze(1),),
+            self._toProbability(cleanResult[0]),
             target
         )
 
