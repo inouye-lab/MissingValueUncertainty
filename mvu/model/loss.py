@@ -69,15 +69,13 @@ class DistributionLoss(Module):
 
 def _safeNormalize(tensor: Tensor) -> Tensor:
     """Normalizes a vector without issue if the vector contains 0 or infinity"""
-    for i in range(tensor.shape[0]):
-        # if its all 0s, set it to all 1s before normalizing; treat as uniform
-        if torch.all(tensor[i] == 0):
-            tensor[i,:] = 1
-        # if it has infinity, clear non-infinity
-        inf = torch.isinf(tensor[i,:])
-        if torch.any(inf):
-            tensor[i, inf] = 1
-            tensor[i, ~inf] = 0
+    # if a row is all 0s, set them all to 1 before normalizing
+    tensor[torch.all(tensor == 0, dim=1),:] = 1
+    # if it has infinity, clear then row, but then replace the infinities with 1s
+    inf = torch.isinf(tensor)
+    tensor[torch.any(inf, dim=1),:] = 0
+    tensor[inf] = 1
+    # normalize the remainder
     return normalize(tensor, p=1)
 
 
