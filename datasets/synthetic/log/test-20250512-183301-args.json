@@ -1,0 +1,1 @@
+{"name": "test", "output": "./datasets/synthetic/", "samples": 10000, "cuda_index": -1, "seed": 7357, "verbose": 1}

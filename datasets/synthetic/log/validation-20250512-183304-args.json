@@ -1,0 +1,1 @@
+{"name": "validation", "output": "./datasets/synthetic/", "samples": 10000, "cuda_index": -1, "seed": 7411047104, "verbose": 1}
