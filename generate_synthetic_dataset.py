@@ -68,7 +68,7 @@ if __name__ == '__main__':
 
     # create data frame
     df = pd.DataFrame(torch.cat((xValues, yValues.unsqueeze(1), phiValues.unsqueeze(1)), dim=1).cpu().numpy(), columns=labels)
-    df['label'] = pd.to_numeric(df['label'], errors='coerce').astype("Int32")
+    df['label'] = pd.to_numeric(df['label'], errors='raise').astype("Int32")
     # save data frame
     path = os.path.join(outputFolder, f"{date if args.name is None else args.name}.csv")
     df.to_csv(path, index=False)
