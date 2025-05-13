@@ -6,6 +6,7 @@ import os
 from typing import List, Optional
 
 import torch
+from torch import nn
 from torch.utils.data import DataLoader
 
 from mvu.dataset.loader import getDatasetSplits
@@ -17,7 +18,7 @@ from mvu.explanation.decision import DecisionMaker
 from mvu.explanation.dirichlet import DirichletDecisionMaker, DirichletClassifier
 from mvu.explanation.moments import MethodOfMomentsDecisionMaker
 from mvu.logger import setupLogging
-from mvu.model.generator import SingleSampleImputator, CachingBatchGenerator, BatchMeanImputator, BatchGenerator
+from mvu.model.generator import CachingBatchGenerator, BatchMeanImputator, BatchGenerator
 from mvu.model.imputator import ZeroImputator, Imputator
 from mvu.model.method import MonteCarloBatchMethod, BasicCombinationMethod, ScaleMaxBetaVarianceMethod, Method, \
     DiscardingMaskMethod
@@ -110,12 +111,16 @@ if __name__ == '__main__':
 
     # if we have a dirichlet classifier, add the dirichlet decision maker
     includeMask: IncludeMask = IncludeMask.NONE
-    if isinstance(classifier, NeuralNetworkRegressor) and isinstance(classifier.nn, Resnet18Dirichlet):
-        logging.info(f"Including Dirichlet decision maker")
-        decisionMakers.append(DirichletDecisionMaker(classifier, args.decision_samples))
-        includeMask = IncludeMask.MISSING
-        # substitute the classifier for the remaining methods with one that convert to mean
-        classifier = DirichletClassifier.fromRegressor(classifier)
+    if isinstance(classifier, NeuralNetworkRegressor):
+        if isinstance(classifier.nn, Resnet18Dirichlet):
+            logging.info(f"Including Dirichlet decision maker")
+            decisionMakers.append(DirichletDecisionMaker(classifier, args.decision_samples))
+            includeMask = IncludeMask.MISSING
+            # substitute the classifier for the remaining methods with one that convert to mean
+            classifier = DirichletClassifier.fromRegressor(classifier)
+        else:
+            # TODO: will it always be true that we wish to set the activation function like this? maybe it should be set at a nn level
+            classifier.activation = nn.Sigmoid()
 
     # methods
     methods: List[Method] = []
