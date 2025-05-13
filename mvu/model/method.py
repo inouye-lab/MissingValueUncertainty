@@ -275,8 +275,9 @@ class MonteCarloBatchMethod(Method):
         variances: Optional[Tensor] = None
 
         for fIdx, feature in enumerate(features):
+            feature: Tensor
             index = None if indices is None else int(indices[fIdx])
-            batch = self.generator.createBatch(features[fIdx], self.samples, index, rand)
+            batch = self.generator.createBatch(feature, self.samples, index, rand)
             prediction = self.regressor.predict(batch)
             # we don't know the output size without running the regressor, so lazily init the output tensors
             if means is None:
@@ -316,3 +317,31 @@ class ScaleMaxBetaVarianceMethod(BasicCombinationMethod):
     def estimateUncertainty(self, features: Tensor, mean: Tensor, rand: Generator = None, indices: Tensor = None
                             ) -> Tensor:
         return mean * (1 - mean) * self.scale
+
+
+class DiscardingMaskMethod(Method):
+    """Method that wraps another method, discarding the mask tensor. Used to allow mixing dirichlet network with non"""
+
+    method: Method
+    """Wrapped method"""
+    maskDim: int
+    """Dimension of the mask to modify"""
+    maskKeep: Tensor
+    """Indices to keep from the mask"""
+
+    def __init__(self, method: Method, maskDim: int, maskKeep: Tensor):
+        self.method = method
+        self.maskDim = maskDim
+        self.maskKeep = maskKeep
+
+    @override
+    def predictWithUncertainty(self, features: Tensor, rand: Generator = None, indices: Tensor = None
+                               ) -> Tuple[Tensor, Tensor]:
+        return self.method.predictWithUncertainty(torch.index_select(features, self.maskDim, self.maskKeep), rand, indices)
+
+    @property
+    @override
+    def name(self) -> str:
+        return self.method.name
+
+
