@@ -59,10 +59,19 @@ def computeBestAction(phi: Tensor, lossFunction: callable, actions: Tensor) -> T
     :return:  Best action tensor, and the confidence tensor of that action
     """
     allLoss: Tensor
+    # if the dimension is (datasetSamples,1), convert to (datasetSamples,) for simplicity
+    if len(phi.shape) > 1:
+        phi = phi.squeeze(1)
+    # if the dimension is (), convert to (1,)
+    elif len(phi.shape) == 0:
+        phi = phi.unsqueeze(0)
+
+    # dimension of phi is (datasetSamples,)
     if len(phi.shape) == 1:
         # compute loss for each action, outer product makes dimensions [sampleIdx, actionIdx]
         allLoss = torch.outer(phi, lossFunction(1, actions)) + torch.outer(1 - phi, lossFunction(0, actions))
     else:
+        # dimension of phi is (datasetSamples, featureCount)
         allLoss = torch.zeros((phi.shape[0], actions.shape[0]), dtype=torch.float, device=phi.device)
         for i in range(phi.shape[1]):
             allLoss += torch.outer(phi[:, i], lossFunction(i, actions))
