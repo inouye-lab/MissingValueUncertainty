@@ -98,7 +98,7 @@ if __name__ == '__main__':
         teacher.to(device)
         teacher.nn.eval()
         # TODO: is there a way to not hardcode this?
-        teacher.nn.activation = nn.Sigmoid()
+        teacher.activation = nn.Sigmoid()
     else:
         teacher = model
 
