@@ -137,6 +137,9 @@ class DecisionMaker(CachableModel, Namable, ABC):
     Logic to make a decision given a input tensor (with missingness) and an input action space (with loss function)
     """
 
+    scale: float
+    """Calibration scale for this method. If this method does not scale, set it to 1 in the constructor."""
+
     @abstractmethod
     def estimateBestAction(self, features: Tensor, lossFunction: callable, actions: Tensor, rand: Generator = None,
                            indices: Tensor = None) -> Tuple[Tensor, Tensor]:

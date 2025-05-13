@@ -45,7 +45,7 @@ def _toDistribution(mean: Tensor, var: Tensor, alpha: Tensor, beta: Tensor) -> D
     return Beta(alpha, beta)
 
 
-def estimateBetaDistributionFromMoments(mean: Tensor, var: Tensor, scale: float = None) -> Union[Distribution, List[Distribution]]:
+def estimateBetaDistributionFromMoments(mean: Tensor, var: Tensor, scale: float = 1) -> Union[Distribution, List[Distribution]]:
     """
     Converts the given mean and variances into a distribution.
     Will map to a beta distribution if the variance is non-zero, or a delta distribution if zero.
@@ -80,10 +80,8 @@ class MethodOfMomentsDecisionMaker(DecisionMaker):
     Method matching a tensor of means and a tensor of variances to a distribution (for shape size 0)
     or a list of distributions (for shape size 1). See `estimateBetaDistributionFromMoments`.
     """
-    scale: Optional[float]
-    """Scaling constant for the alpha and beta parameters."""
 
-    def __init__(self, method: Method, distSamples: int, momentMatcher: callable = estimateBetaDistributionFromMoments, scale: float = None):
+    def __init__(self, method: Method, distSamples: int, momentMatcher: callable = estimateBetaDistributionFromMoments, scale: float = 1):
         self.method = method
         self.size = torch.Size((distSamples,))
         self.momentMatcher = momentMatcher
