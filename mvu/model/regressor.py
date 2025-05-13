@@ -156,11 +156,13 @@ class NeuralNetworkRegressor(Regressor):
     """Regressor using a torch neural network"""
 
     nn: Module
+    activation: Optional[callable]
     featureIndex: int
 
-    def __init__(self, nn: Module):
+    def __init__(self, nn: Module, activation: callable = None, feature_index: int = -1):
         self.nn = nn
-        self.featureIndex = -1
+        self.activation = activation
+        self.featureIndex = feature_index
 
     @override
     def predict(self, features: Tensor) -> Tensor:
@@ -174,6 +176,9 @@ class NeuralNetworkRegressor(Regressor):
         :return: Output tensor, with a single dimension representing the prediction
         """
         result = self.nn(features)
+        # apply passed activation function
+        if self.activation is not None:
+            result = self.activation(result)
         if self.featureIndex > -1:
             return result[:, self.featureIndex]
         return result
