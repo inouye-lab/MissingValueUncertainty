@@ -3,22 +3,26 @@ import csv
 import json
 import logging
 import os
-from typing import List
+from typing import List, Optional
 
 import torch
 from torch.utils.data import DataLoader
 
 from mvu.dataset.loader import getDatasetSplits
-from mvu.dataset.mutators import SpecificFeatureRemovingDataset, createMask
+from mvu.dataset.mutators import SpecificFeatureRemovingDataset, createMask, IncludeMask
 from mvu.dataset.specialized.celeba import CelebADataset
 from mvu.explanation.actions import createActionSpace
 from mvu.explanation.calibration import CalibrationExperiment
+from mvu.explanation.decision import DecisionMaker
+from mvu.explanation.dirichlet import DirichletDecisionMaker, DirichletClassifier
 from mvu.explanation.moments import MethodOfMomentsDecisionMaker
 from mvu.logger import setupLogging
-from mvu.model.generator import SingleSampleImputator, CachingBatchGenerator, BatchMeanImputator
-from mvu.model.imputator import ZeroImputator
-from mvu.model.method import MonteCarloBatchMethod, BasicCombinationMethod, ScaleMaxBetaVarianceMethod, Method
-from mvu.model.regressor import Regressor
+from mvu.model.generator import SingleSampleImputator, CachingBatchGenerator, BatchMeanImputator, BatchGenerator
+from mvu.model.imputator import ZeroImputator, Imputator
+from mvu.model.method import MonteCarloBatchMethod, BasicCombinationMethod, ScaleMaxBetaVarianceMethod, Method, \
+    DiscardingMaskMethod
+from mvu.model.regressor import Regressor, NeuralNetworkRegressor
+from mvu.model.specialized.resnet import Resnet18Dirichlet
 from mvu.threading_utils import distributeTasks
 from mvu.util import selectDevice, jsonOrName
 
@@ -27,7 +31,7 @@ if __name__ == '__main__':
 
     parser.add_argument("name", type=str, help='Name of the dataset to parse')
     parser.add_argument("--dataset", type=json.loads, default=dict(), help='Dataset arguments')
-    parser.add_argument("--cache_directory", type=str, help='Location to build the cache')
+    parser.add_argument("--cache_directory", type=str, default=None, help='Location to build the cache')
     parser.add_argument("--mask", type=jsonOrName, help="Name of the mask to use")
     parser.add_argument("--output", type=str, default="./results/", help='Location to save result CSV')
 
@@ -47,6 +51,8 @@ if __name__ == '__main__':
     # baseline options
     parser.add_argument("--zero_imputation", action='store_true',
                         help="If true, includes zero imputation.")
+    parser.add_argument("--zero_variance", action='store_true',
+                        help="If true, includes zero variance.")
     parser.add_argument("--beta_variance_scales", type=float, nargs='*', default=[],
                         help="Scales of the beta variance to try for basic imputation.")
 
@@ -86,6 +92,7 @@ if __name__ == '__main__':
     classifier = Regressor.load(args.classifier)
     classifier.to(device)
 
+
     # load in dataset
     ds = getDatasetSplits(args.name, **args.dataset)
     logging.info(f"Using dataset {args.name} with {len(ds.test)} test samples")
@@ -94,35 +101,77 @@ if __name__ == '__main__':
     if args.classifier_feature is not None:
         classifier.setFeatureIndex(ds.test.attributes.originalNames.index(args.classifier_feature))
 
+    # determine mask
     logging.info("Loading mask " + args.mask["name"])
     mask = createMask(ds.metadata, **args.mask)
-    dsMissing = SpecificFeatureRemovingDataset(ds.test, mask)
 
-    logging.info(f"Creating generator using cache at {args.cache_directory}")
-    generator = CachingBatchGenerator(None, args.cache_directory, mask.to(device))
+    # start setup for decision makers
+    decisionMakers: List[DecisionMaker] = []
+
+    # if we have a dirichlet classifier, add the dirichlet decision maker
+    includeMask: IncludeMask = IncludeMask.NONE
+    if isinstance(classifier, NeuralNetworkRegressor) and isinstance(classifier.nn, Resnet18Dirichlet):
+        logging.info(f"Including Dirichlet decision maker")
+        decisionMakers.append(DirichletDecisionMaker(classifier, args.decision_samples))
+        includeMask = IncludeMask.MISSING
+        # substitute the classifier for the remaining methods with one that convert to mean
+        classifier = DirichletClassifier.fromRegressor(classifier)
 
     # methods
-    methods: List[Method] = [
-        MonteCarloBatchMethod(classifier, generator, samples)
-        for samples in args.generator_samples
-    ]
-    if args.zero_imputation or len(args.beta_variance_scales) > 0:
-        logging.info("Including baseline imputators with zero imputation, single sample imputation, and "
-                     "conditional gaussian. Running all imputators with zero variance.")
-        for scale in args.beta_variance_scales:
-            logging.info(f"Running all baseline imputators with {scale} scaled beta max variance.")
-        for imputator in [ZeroImputator(), *[BatchMeanImputator(generator, size) for size in args.batch_mean_imputation]]:
-            if args.zero_imputation:
+    methods: List[Method] = []
+    # add generator method if we have a caching batch generator
+    generator: Optional[BatchGenerator] = None
+    if args.cache_directory is not None:
+        logging.info(f"Creating generator using cache at {args.cache_directory}")
+        generator = CachingBatchGenerator(None, args.cache_directory, mask.to(device))
+        methods.extend(
+            MonteCarloBatchMethod(classifier, generator, samples)
+            for samples in args.generator_samples
+        )
+
+    # basic imputation
+    if args.zero_variance or len(args.beta_variance_scales) > 0:
+        imputators: List[Imputator] = []
+
+        # add zero imputation
+        if args.zero_imputation:
+            logging.info("Including baseline imputators with zero imputation.")
+            imputators.append(ZeroImputator())
+
+        # add batch imputator if requested
+        if generator is not None and len(args.batch_mean_imputation) > 0:
+            logging.info(f"Including batch mean imputators with sizes {args.batch_mean_imputation}.")
+            imputators.extend(BatchMeanImputator(generator, size) for size in args.batch_mean_imputation)
+
+        # log info about variance methods
+        if args.zero_variance:
+            logging.info(f"Running all baseline imputators zero variance.")
+        if len(args.beta_variance_scales) > 0:
+            logging.info(f"Running all baseline imputators with {args.beta_variance_scales} scaled beta max variance.")
+
+        # for each, do a basic combination method
+        for imputator in imputators:
+            if args.zero_variance:
                 methods.append(BasicCombinationMethod(classifier, imputator))
             for scale in args.beta_variance_scales:
                 methods.append(ScaleMaxBetaVarianceMethod(classifier, imputator, scale))
 
+    # map all additional methods to decision makers
+    if includeMask != IncludeMask.NONE:
+        logging.info(f"Adding {len(methods)} methods with discarded masks.")
+        # if we have a mask, strip it from all methods
+        maskKeep = torch.range(0, 3, device=device)
+        decisionMakers.extend(MethodOfMomentsDecisionMaker(DiscardingMaskMethod(method, maskKeep), args.decision_samples) for method in methods)
+    else:
+        logging.info(f"Adding {len(methods)} methods.")
+        decisionMakers.extend(MethodOfMomentsDecisionMaker(method, args.decision_samples) for method in methods)
+
     # setup datasets
+    # if we have any methods beyond the Dirichlet, then use nan for the missing value. 0 is faster but isn't what most methods support
+    dsMissing = SpecificFeatureRemovingDataset(ds.test, mask, includeMask=includeMask, missingValue=torch.nan if len(methods) > 0 else 0)
+
     loaderClean = DataLoader(ds.test, batch_size=args.batch_size, pin_memory=True)
     loaderMissing = DataLoader(dsMissing, batch_size=args.batch_size, pin_memory=True)
-
-    # map methods to decision makers
-    decisionMakers = [MethodOfMomentsDecisionMaker(method, args.decision_samples) for method in methods]
 
     # finally, build experiment list
     experiments: List[CalibrationExperiment] = []

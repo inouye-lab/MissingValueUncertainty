@@ -20,7 +20,7 @@ python mvce_dataset.py celeba --output ./results/mvce/top/$feature/ --generator_
     --classifier_feature $feature \
     --cuda_index 0 \
     --mask top --cache_directory ../../datasets/CelebAMask/cache/256/top_batches \
-    --beta_variance_scales 0.5 0.99 --zero_imputation \
+    --beta_variance_scales 0.5 0.99 --zero_imputation --zero_variance \
     --action_spaces zero-one '{"name":"aleatoric", "constantLoss": 0.4}' --threads 4 --trials 4
 
 #for_feature Mouth_Slightly_Open
