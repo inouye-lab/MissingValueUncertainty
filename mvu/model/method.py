@@ -329,7 +329,7 @@ class DiscardingMaskMethod(Method):
     maskKeep: Tensor
     """Indices to keep from the mask"""
 
-    def __init__(self, method: Method, maskDim: int, maskKeep: Tensor):
+    def __init__(self, method: Method, maskKeep: Tensor, maskDim: int = 1):
         self.method = method
         self.maskDim = maskDim
         self.maskKeep = maskKeep
