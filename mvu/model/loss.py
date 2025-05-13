@@ -67,7 +67,7 @@ class DistributionLoss(Module):
         return loss
 
 
-def _safeNormalize(tensor: Tensor) -> Tensor:
+def safeNormalize(tensor: Tensor) -> Tensor:
     """Normalizes a vector without issue if the vector contains 0 or infinity"""
     # if a row is all 0s, set them all to 1 before normalizing
     tensor[torch.all(tensor == 0, dim=1),:] = 1
@@ -100,7 +100,7 @@ class DirichletLoss(DistributionLoss):
         """
         # with just 1 value, our loss function likely expects size 1 tensors
         # but the Dirchlet distribution wants size 2 tensors, so convert as needed
-        maskedProbability = _safeNormalize(maskedResult) if self.maskedWeight > 0 else None
+        maskedProbability = safeNormalize(maskedResult) if self.maskedWeight > 0 else None
         cleanProbability: Tensor
         if cleanResult.shape[1] == 1:
             cleanProbability = cleanResult
@@ -108,7 +108,7 @@ class DirichletLoss(DistributionLoss):
             if self.maskedWeight > 0:
                 maskedProbability = maskedProbability[:,1].unsqueeze(dim=1)
         else:
-            cleanResult = _safeNormalize(cleanResult)
+            cleanResult = safeNormalize(cleanResult)
             cleanProbability = cleanResult
         # normalize to ensure vector inputs are probability values
         return self._forward(

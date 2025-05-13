@@ -47,6 +47,23 @@ class IncludeMask(Enum):
         return includeMask
 
 
+def fullyObservedMask(original: Tensor, combineChannels: bool = True, dim: int = 0) -> Tensor:
+    """
+    Adds the mask channel to a fully observed image.
+    :param original:         Maskless image.
+    :param combineChannels: If true, a single channel is added for the mask. If false, 1 channel per channel in the original image.
+    :param dim:             The dimension to add the mask to.
+    :return: Image with the mask added
+    """
+    mask: Tensor
+    if combineChannels:
+        # map the dimension size to 1, rest to the original size
+        mask = torch.zeros(tuple(1 if i == dim else size for i, size in enumerate(original.shape)))
+    else:
+        mask = torch.zeros_like(original)
+    return torch.cat((original, mask), dim=dim)
+
+
 class MaskedDataset(DatasetWrapper[T_co]):
     """
     Dataset that removes all features matching the passed tensor.
@@ -98,12 +115,7 @@ class MaskedDataset(DatasetWrapper[T_co]):
         if self.returnOriginal:
             # if we are including the original and including masks, make sure to get the mask in the original
             if self.includeMask == IncludeMask.ALWAYS:
-                mask: Tensor
-                if self.combineChannels:
-                    mask = torch.zeros_like(original[0]).unsqueeze(0)
-                else:
-                    mask = torch.zeros_like(original)
-                original = torch.cat((original, mask), dim=0)
+                original = fullyObservedMask(original, self.combineChannels)
 
             # noinspection PyRedundantParentheses
             return (features, original, *data[1:])
