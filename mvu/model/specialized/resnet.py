@@ -4,6 +4,13 @@ from torch.nn import Module, Conv2d
 from torchvision.models import resnet18, ResNet18_Weights
 
 
+class ExponentialActivation(Module):
+    """Activation function using simple exponential."""
+    # noinspection PyMethodMayBeStatic
+    def forward(self, tensor: Tensor) -> Tensor:
+        return torch.exp(tensor)
+
+
 class Resnet18Classifier(Module):
     resnet: resnet18
     """Resnet module instance"""
@@ -40,6 +47,12 @@ class Resnet18Classifier(Module):
             self.activation = nn.Sigmoid()
         elif activation == "identity":
             self.activation = nn.Identity()
+        elif activation == "softplus":
+            self.activation = nn.Softplus()
+        elif activation == "exp":
+            self.activation = ExponentialActivation()
+        else:
+            raise ValueError(f"Unknown activation function '{activation}'")
 
     def forward(self, features: Tensor):
         # step 1: apply model
@@ -64,8 +77,8 @@ class Resnet18Dirichlet(Resnet18Classifier):
     """
     Resnet structure that inputs a 4 channel image (with missingness) and outputs a strength vector
     """
-    def __init__(self, num_classes: int, minStrength: float = 1e-35, *args, **kwargs):
-        super().__init__(_flattenSingleClass(num_classes), *args, **kwargs)
+    def __init__(self, num_classes: int, minStrength: float = 1e-35, activation: str = "softplus", *args, **kwargs):
+        super().__init__(_flattenSingleClass(num_classes), *args, activation=activation, **kwargs)
         # swap out first layer for one with 4 channels, 4th is missing
         self.resnet.conv1 = _createResnetConv2dWithMissing()
         self.minStrength = minStrength
@@ -73,8 +86,8 @@ class Resnet18Dirichlet(Resnet18Classifier):
     def forward(self, features: Tensor):
         # step 1: apply model
         strengths = self.resnet(features)
-        # step 2: send strengths through a exp. Clamp is just here for safety in case we go to small
-        strengths = torch.clamp(torch.exp(strengths), min=self.minStrength)
+        # step 2: send strengths through activation. Clamp is just here for safety in case we go to small
+        strengths = torch.clamp(self.activation(strengths), min=self.minStrength)
         # return the strengths alone
         return strengths
 
