@@ -16,7 +16,7 @@ from mvu.explanation.moments import MethodOfMomentsDecisionMaker
 from mvu.logger import setupLogging
 from mvu.model.distribution import GaussianParameters, ConditionalGaussianDistribution
 from mvu.model.generator import BatchGenerator, SingleSampleImputator
-from mvu.model.imputator import ZeroImputator
+from mvu.model.imputator import ZeroImputator, Imputator
 from mvu.model.method import MonteCarloBatchMethod, BasicCombinationMethod, ScaleMaxBetaVarianceMethod, Method
 from mvu.model.regressor import NaiveLinearRegressor
 from mvu.threading_utils import distributeTasks
@@ -39,10 +39,16 @@ if __name__ == '__main__':
                         help='Location of the input dataset')
 
     # baseline options
-    parser.add_argument("--imputation_baselines", action='store_true',
-                        help="If true, includes baselines for basic types of imputation.")
+    parser.add_argument("--zero_variance", action='store_true',
+                        help="If true, includes imputation baselines at zero variance.")
     parser.add_argument("--beta_variance_scales", type=float, nargs='*', default=[],
                         help="Scales of the beta variance to try for basic imputation.")
+    parser.add_argument("--zero_imputation", action='store_true',
+                        help="If true, includes zero imputation baseline.")
+    parser.add_argument("--single_sample_imputation", action='store_true',
+                        help="If true, includes single sample imputation baseline.")
+    parser.add_argument("--mean_imputation", action='store_true',
+                        help="If true, includes mean imputation baseline.")
 
     # generator options
     parser.add_argument("--mean_shifts", type=str, nargs='*', default=[],
@@ -140,13 +146,32 @@ if __name__ == '__main__':
         for samples in args.generator_samples
         for generator in generators
     ]
-    if args.imputation_baselines or len(args.beta_variance_scales) > 0:
-        logging.info("Including baseline imputators with zero imputation, single sample imputation, and "
-                     "conditional gaussian. Running all imputators with zero variance.")
-        for scale in args.beta_variance_scales:
-            logging.info(f"Running all baseline imputators with {scale} scaled beta max variance.")
-        for imputator in [ZeroImputator(), SingleSampleImputator(groundTruthGenerator), groundTruthGenerator]:
-            if args.imputation_baselines:
+    if args.zero_variance or len(args.beta_variance_scales) > 0:
+        imputators: List[Imputator] = []
+
+        # add zero imputation
+        if args.zero_imputation:
+            logging.info("Including baseline imputators with zero imputation.")
+            imputators.append(ZeroImputator())
+        # single sample for symmetry with dataset
+        if args.single_sample_imputation:
+            logging.info("Including baseline imputators with single sample imputation.")
+            imputators.append(SingleSampleImputator(groundTruthGenerator))
+        # mean imputation for best results
+        if args.mean_imputation:
+            logging.info("Including baseline imputators with mean imputation.")
+            imputators.append(groundTruthGenerator)
+
+        # log info about variance methods
+        if args.zero_variance:
+            logging.info(f"Running all baseline imputators zero variance.")
+        if len(args.beta_variance_scales) > 0:
+            logging.info(
+                f"Running all baseline imputators with {args.beta_variance_scales} scaled beta max variance.")
+
+        # for each, do a basic combination method
+        for imputator in imputators:
+            if args.zero_variance:
                 methods.append(BasicCombinationMethod(classifier, imputator))
             for scale in args.beta_variance_scales:
                 methods.append(ScaleMaxBetaVarianceMethod(classifier, imputator, scale))
