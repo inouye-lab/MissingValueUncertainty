@@ -1,0 +1,8 @@
+Method,Scale,Avg MVCE Mean
+Basic Imputation - Single Sample Conditional Gaussian - Ground Truth Imputation,1,0.1097599938511847
+Beta Mean * 0.99 - Single Sample Conditional Gaussian - Ground Truth Imputation,2.5,0.023575529
+Monte Carlo - Conditional Gaussian - 0.25 * Covariance - 100 samples,0.25,0.006403693
+Monte Carlo - Conditional Gaussian - 0.6 Correlation - 100 samples,1,0.010228625
+Monte Carlo - Conditional Gaussian - 0.8 Correlation - 100 samples,0.75,0.006953638
+Monte Carlo - Conditional Gaussian - 4.0 * Covariance - 100 samples,5,0.014975365
+Monte Carlo - Conditional Gaussian - Ground Truth - 100 samples,1,0.00425733
