@@ -15,7 +15,8 @@ def bestActionWithoutMissing(features: Tensor, classifier: Regressor, lossFuncti
                              ) -> Tensor:
     assert torch.count_nonzero(torch.isnan(features)) == 0, "Cannot compute baseline best action with missingness"
     phis = classifier.predict(features)
-    actions, confidences = computeBestActions(phis, lossFunction, actions)
+    # unsqueeze 1 is for the 1 sample of phi (instead of many)
+    actions, confidences = computeBestActions(phis.unsqueeze(1), lossFunction, actions)
     return actions
 
 
