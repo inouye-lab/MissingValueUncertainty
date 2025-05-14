@@ -42,8 +42,8 @@ class DirichletDecisionMaker(DecisionMaker):
         # No worry of zero variance, so can directly construct the distribution over the full set of alphas
         distribution = Dirichlet(alphas)
 
-        # phis has dimension (randomSamples, datasetSamples, featureCount)
-        phis = distribution.sample(self.size)
+        # phis has dimension (randomSamples, datasetSamples, featureCount), but we want (datasetSamples, randomSamples, featureCount)
+        phis = torch.swapaxes(distribution.sample(self.size), 0, 1)
         return computeBestActions(phis, lossFunction, actions)
 
     @property
@@ -83,6 +83,6 @@ class DirichletClassifier(NeuralNetworkRegressor):
             # need to determine if we wanted 1 mask channel, or 1 per in the original image
             missingSize = self.expected_mask_size - maskSize
             assert missingSize == 1 or missingSize == maskSize, "Mask must either double the size or add 1 to the size"
-            features = fullyObservedMask(features, missingSize == 1, dim=self.expected_mask_size)
+            features = fullyObservedMask(features, missingSize == 1, dim=self.mask_dim)
             assert features.shape[self.mask_dim] == self.expected_mask_size, "Wrong mask size after adding fully observed mask"
         return super().predict(features)

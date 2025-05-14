@@ -83,8 +83,8 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
             cleanFeatures = cleanBatch[0][supportedIndices]
             if device is not None:
                 cleanFeatures = cleanFeatures.to(device)
-            assert cleanFeatures.shape == mutatedFeatures.shape, \
-                "Clean and mutated dataset must have the same batch shape"
+            assert cleanFeatures.shape[0] == mutatedFeatures.shape[0], \
+                "Clean and mutated dataset must have the same size"
             bestActions = bestActionWithoutMissing(cleanFeatures, classifier, lossFunction, actions)
 
         # compute predicted actions

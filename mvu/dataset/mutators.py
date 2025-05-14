@@ -58,7 +58,7 @@ def fullyObservedMask(original: Tensor, combineChannels: bool = True, dim: int =
     mask: Tensor
     if combineChannels:
         # map the dimension size to 1, rest to the original size
-        mask = torch.zeros(tuple(1 if i == dim else size for i, size in enumerate(original.shape)))
+        mask = torch.zeros(tuple(1 if i == dim else size for i, size in enumerate(original.shape)), device=original.device)
     else:
         mask = torch.zeros_like(original)
     return torch.cat((original, mask), dim=dim)

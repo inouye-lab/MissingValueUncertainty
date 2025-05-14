@@ -114,10 +114,11 @@ if __name__ == '__main__':
     if isinstance(classifier, NeuralNetworkRegressor):
         if isinstance(classifier.nn, Resnet18Dirichlet):
             logging.info(f"Including Dirichlet decision maker")
+            classifier.activation = None
             decisionMakers.append(DirichletDecisionMaker(classifier, args.decision_samples))
             includeMask = IncludeMask.MISSING
             # substitute the classifier for the remaining methods with one that convert to mean
-            classifier = DirichletClassifier.fromRegressor(classifier)
+            classifier = DirichletClassifier.fromRegressor(classifier, num_classes=len(ds.metadata.labels))
         else:
             # TODO: will it always be true that we wish to set the activation function like this? maybe it should be set at a nn level
             classifier.activation = nn.Sigmoid()
@@ -165,7 +166,7 @@ if __name__ == '__main__':
     if includeMask != IncludeMask.NONE:
         logging.info(f"Adding {len(methods)} methods with discarded masks.")
         # if we have a mask, strip it from all methods
-        maskKeep = torch.range(0, 3, device=device)
+        maskKeep = torch.arange(0, 3, device=device)
         decisionMakers.extend(MethodOfMomentsDecisionMaker(DiscardingMaskMethod(method, maskKeep), args.decision_samples) for method in methods)
     else:
         logging.info(f"Adding {len(methods)} methods.")
