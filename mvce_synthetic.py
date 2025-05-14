@@ -35,7 +35,7 @@ if __name__ == '__main__':
                         help="Monte Carlo samples to take from the decision distribution. Used for all models")
     parser.add_argument("--cuda_index", type=int, default=0,
                         help="Index to use for CUDA, set to -1 to force CPU")
-    parser.add_argument("--dataset_path", type=str, default="./datasets/synthetic/data.csv",
+    parser.add_argument("--dataset_path", type=str, default="./datasets/synthetic/test.csv",
                         help='Location of the input dataset')
 
     # baseline options
