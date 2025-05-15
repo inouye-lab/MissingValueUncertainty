@@ -1,6 +1,6 @@
 import logging
 from time import perf_counter
-from typing import Optional
+from typing import Optional, List, Union
 
 import torch
 from torch import Tensor, Generator
@@ -21,7 +21,7 @@ def bestActionWithoutMissing(features: Tensor, classifier: Regressor, lossFuncti
 
 
 def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMaker: DecisionMaker,
-                lossFunction: callable, actions: Tensor, buckets: int,
+                lossFunction: Union[callable,List[callable]], actions: Tensor, buckets: int,
                 classifier: Regressor = None, rand: Generator = None, device: Optional[torch.device] = None) -> Tensor:
     """
     Computes the missing value calibration error for the given decision maker.
@@ -29,7 +29,7 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
                             or dataloader for best actions if classifer is None.
     :param mutatedLoader:   DataLoader for data with missingness.
     :param decisionMaker:   Logic to make a decision given a feature tensor.
-    :param lossFunction:    Loss function for the action space.
+    :param lossFunction:    Loss function for the action space. TODO: update why list
     :param actions:         Action space.
     :param buckets:         Number of buckets for computing the calibration error.
     :param classifier:      Classifier for predicting best actions without missingness.
@@ -48,7 +48,16 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
     actionsLen = len(actions)
     aleatoricIndex = actionsLen - 1  # TODO: this is messy
 
+    isLossList = isinstance(lossFunction, List)
     for i, (cleanBatch, mutatedBatch) in enumerate(zip(cleanLoader, mutatedLoader)):
+        # Below we are sampling multiple loss functions for post hoc calibration
+        batchLoss: callable
+        if isLossList:
+            randIndex = torch.randint(0, len(lossFunction), (1,), generator=rand)
+            batchLoss = lossFunction[randIndex.item()]
+        else:
+            batchLoss = lossFunction
+
         mutatedFeatures = mutatedBatch[0]
         sampleIndices: Optional[Tensor] = None
         supportedIndices: Tensor
@@ -86,13 +95,13 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
                 cleanFeatures = cleanFeatures.to(device)
             assert cleanFeatures.shape[0] == mutatedFeatures.shape[0], \
                 "Clean and mutated dataset must have the same size"
-            bestActions = bestActionWithoutMissing(cleanFeatures, classifier, lossFunction, actions)
+            bestActions = bestActionWithoutMissing(cleanFeatures, classifier, batchLoss, actions)
 
         # compute predicted actions
         if device is not None:
             mutatedFeatures = mutatedFeatures.to(device)
         predActions, confidences = decisionMaker.estimateBestAction(
-            mutatedFeatures, lossFunction, actions, rand=rand, indices=sampleIndices
+            mutatedFeatures, batchLoss, actions, rand=rand, indices=sampleIndices
         )
 
         # map the confidence values to the bucket index
@@ -241,5 +250,109 @@ class CalibrationExperiment:
         csvFile.writerow([
             self.decisionMaker.name, self.actionName, self.maskName, self.time,
             self.results.mean().item(), self.results.std().item(),
+            *[result.item() for result in self.results]
+        ])
+
+# post-hoc
+class CalibrationScaleExperiment:
+    # mvce parameters, see `computeMVCE` for docs
+    cleanLoader: DataLoader
+    mutatedLoader: DataLoader
+    decisionMaker: DecisionMaker
+    lossFunctions: List[callable]
+    """List of loss functions to be used for taking Expectation when calculating post hoc callibration"""
+    actions: Tensor
+    buckets: int
+    classifier: Regressor
+    rand: Generator
+    device: torch.device
+
+    # additional parameters
+    maskName: str
+    """Name of the missing region"""
+    scale: float
+    """The calibration constant being tested for this experiment"""
+    trials: int
+    """Number of times to compute the MVCE, for the sake of error bars"""
+    time: Optional[float]
+    """Duration of this experiment"""
+    results: Tensor
+    """MVCE results for this experiment, size is equal to trials"""
+
+    def __init__(self, cleanLoader: DataLoader, maskName: str, mutatedLoader: DataLoader, decisionMaker: DecisionMaker,
+                 scale: float, lossFunctions: List[callable], actions: Tensor, buckets: int, trials: int,
+                 classifier: Regressor = None, rand: Generator = None, device: Optional[torch.device] = None):
+        self.cleanLoader = cleanLoader
+        self.maskName = maskName
+        self.mutatedLoader = mutatedLoader
+        self.decisionMaker = decisionMaker
+
+        self.scale = scale
+        self.lossFunctions = lossFunctions
+        self.actions = actions
+
+        self.buckets = buckets
+        self.classifier = classifier
+        self.rand = rand
+        self.device = device
+        self.trials = trials
+        self.time = None
+
+    @property
+    def experimentName(self):
+        """Name of the overall experiment"""
+        #return f"{self.decisionMaker.name} missing {self.maskName} in {self.actionName}"
+        return f"{self.decisionMaker.name} missing {self.maskName}"
+
+    def __call__(self, *args, **kwargs):
+        logging.info(f"Started running {self.experimentName}")
+        startTime = perf_counter()
+
+        try:
+            self.results = torch.empty((self.trials,), dtype=torch.float)
+            for i in range(self.trials):
+                self.results[i] = computeMVCE(
+                    self.cleanLoader, self.mutatedLoader, self.decisionMaker,
+                    self.lossFunctions, self.actions, self.buckets, self.classifier,
+                    self.rand, self.device
+                ).cpu()
+        except KeyboardInterrupt as e:
+            # this is just logging the context so we know which experiment was terminated
+            # its in the log again later and earlier, but this reduces some of the debug time
+            logging.error(f"Received keyboard interrupt during {self.experimentName}, terminating program")
+            raise e
+        except BaseException as e:
+            handleException(type(e), e, e.__traceback__,
+                            message=f"Failed to process {self.experimentName}")
+
+        # store final experiment time
+        endTime = perf_counter()
+        self.time = endTime - startTime
+        logging.info(f"Finished running {self.experimentName} in {self.time} seconds")
+
+    @classmethod
+    def writeResultHeaders(cls, csvFile, trials: int) -> None:
+        """
+        Writes the result header to the file
+        :param csvFile:  CSV file for result writing
+        :param trials:   Number of trial headers to include
+        """
+        csvFile.writerow([
+            "Method", "Mask", "Time",
+            "Scale", "MVCE Mean", "MVCE Std",
+            *[f"Trial {i+1}" for i in range(trials)]
+        ])
+
+    def writeResults(self, csvFile) -> None:
+        """
+        Writes the results to the file
+        :param csvFile:  CSV file for result writing
+        """
+        if self.time is None:
+            logging.error(f"Skipping including {self.experimentName} in result CSV as it did not complete.")
+
+        csvFile.writerow([
+            self.decisionMaker.name, self.maskName, self.time,
+            self.scale, self.results.mean().item(), self.results.std().item(),
             *[result.item() for result in self.results]
         ])
