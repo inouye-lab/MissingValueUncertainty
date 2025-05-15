@@ -37,7 +37,7 @@ class DirichletDecisionMaker(DecisionMaker):
             features = features.clone()
             features[nans] = self.missingValue
 
-        alphas = self.regressor.predict(features)
+        alphas = self.regressor.predict(features) * self.scale
         assert alphas.shape[0] == features.shape[0]
         # No worry of zero variance, so can directly construct the distribution over the full set of alphas
         distribution = Dirichlet(alphas)
