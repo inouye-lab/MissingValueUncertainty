@@ -8,7 +8,6 @@ from time import perf_counter
 import torch
 from torch import Tensor, Generator, nn
 from torch.nn import Identity
-from torch.optim import Adam
 from torch.utils.data import DataLoader
 
 from mvu.dataset.mutators import IncludeMask
@@ -19,7 +18,7 @@ from mvu.model.loader import createRegressorFromJson
 from mvu.model.loss import DirichletLoss, DirichletStrengthLogitLoss
 from mvu.model.regressor import NeuralNetworkRegressor, Regressor
 from mvu.model.specialized.resnet import Resnet18DirichletStrength
-from mvu.util import jsonOrString, selectDevice, jsonOrName
+from mvu.util import jsonOrString, selectDevice, jsonOrName, getOptimizer
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -35,7 +34,6 @@ if __name__ == '__main__':
                         help="Index to use for CUDA, set to -1 to force CPU")
 
     # training
-    parser.add_argument('--learning_rate', type=float, default=0.0001, help='Learning rate for Adam')
     parser.add_argument('--training_iterations', type=int, default=200,
                         help='Maximum training iterations, may train for less if the model stops improving')
     parser.add_argument('--batch_size', type=int, default=10, help='Batch size during training')
@@ -46,6 +44,9 @@ if __name__ == '__main__':
     parser.add_argument("--evaluate_training", action='store_true',
                         help="If set, training accuracy is logged during validation. Useful for debugging patience.")
     parser.add_argument("--teacher", type=str, default=None, help='Path to the pretrained regressor to load')
+
+    # optimizer
+    parser.add_argument("--optimizer", type=jsonOrName, default="adam", help='Optimizer choice')
 
     # loss function config
     parser.add_argument('--masked_weight', type=float, default=0.5,
@@ -112,8 +113,7 @@ if __name__ == '__main__':
         lossFunction = DirichletLoss(args.masked_weight, args.dirichlet_weight, cleanWeight=args.clean_weight)
 
     # other setup
-    optimizer = Adam(model.nn.parameters(), lr=args.learning_rate)
-
+    optimizer = getOptimizer(model.nn, **args.optimizer)
 
     # setup mutator
     masks = [createMask(ds.metadata, **mask) for mask in args.masks]
