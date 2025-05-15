@@ -8,9 +8,9 @@ from time import perf_counter
 import torch
 from torch import Tensor, Generator, nn
 from torch.nn import Identity
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 
-from mvu.dataset.mutators import IncludeMask
+from mvu.dataset.mutators import IncludeMask, BlockRemovingDataset
 from mvu.dataset.loader import getDatasetSplits
 from mvu.dataset.mutators import createMask, RandomMaskedDataset, distributeMasks
 from mvu.logger import setupLogging
@@ -26,12 +26,15 @@ if __name__ == '__main__':
     # Basic
     parser.add_argument("name", type=str, help='Name of the dataset to parse')
     parser.add_argument("dataset", type=json.loads, default=dict(), help='Parameters to load the dataset')
-    parser.add_argument("--masks", type=jsonOrName, nargs="*", help="Name of the masks to use")
     parser.add_argument("--output", type=str, default="./models/nn/", help='Location to save final regressor')
     parser.add_argument('--seed', type=int, default=1337, help='Seed for random permutations')
     parser.add_argument('-v', '--verbose', type=int, nargs='?', default=1, help='Logging verbosity level')
     parser.add_argument("--cuda_index", type=int, default=0,
                         help="Index to use for CUDA, set to -1 to force CPU")
+
+    # missing features
+    parser.add_argument("--masks", type=jsonOrName, nargs="*", default=[], help="Name of the masks to use")
+    parser.add_argument("--drop", type=json.loads, default=dict(), help="Parameters for dropping for the dataset")
 
     # training
     parser.add_argument('--training_iterations', type=int, default=200,
@@ -116,13 +119,21 @@ if __name__ == '__main__':
     optimizer = getOptimizer(model.nn, **args.optimizer)
 
     # setup mutator
-    masks = [createMask(ds.metadata, **mask) for mask in args.masks]
+    maskedTraining: Dataset
+    maskedValidation: Dataset
     # when we have a teacher, don't give the teacher data with the mask
     includeMask = IncludeMask.ALWAYS if args.teacher is None else IncludeMask.MISSING
-    # for training, randomly choose mask
-    maskedTraining = RandomMaskedDataset(ds.train, masks, rand, missingValue=0, includeMask=includeMask, returnOriginal=True)
-    # for validation, split the set into parts using each mask
-    maskedValidation = distributeMasks(ds.validate, masks, rand, missingValue=0, includeMask=includeMask, returnOriginal=True)
+    if len(args.masks) > 0:
+        logging.info(f"Using masked missingness with {args.masks}")
+        masks = [createMask(ds.metadata, **mask) for mask in args.masks]
+        # for training, randomly choose mask
+        maskedTraining = RandomMaskedDataset(ds.train, masks, rand, missingValue=0, includeMask=includeMask, returnOriginal=True)
+        # for validation, split the set into parts using each mask
+        maskedValidation = distributeMasks(ds.validate, masks, rand, missingValue=0, includeMask=includeMask, returnOriginal=True)
+    else:
+        logging.info(f"Using block missingness with {args.drop}")
+        maskedTraining   = BlockRemovingDataset.fromMetadata(ds.train,    ds.metadata, missingValue=0, includeMask=includeMask, returnOriginal=True, **args.drop)
+        maskedValidation = BlockRemovingDataset.fromMetadata(ds.validate, ds.metadata, missingValue=0, includeMask=includeMask, returnOriginal=True, **args.drop)
 
     # setup data loading
     trainLoader    = DataLoader(maskedTraining,   batch_size=args.batch_size, shuffle=True,  generator=rand, pin_memory=True)
