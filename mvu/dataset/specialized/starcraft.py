@@ -8,10 +8,9 @@ from sc2image import StarCraftImage, StarCraftCIFAR10, StarCraftMNIST
 from torch import Tensor
 from torch.utils.data import Dataset
 
-from mvu.dataset.specialized.baselines import splitTrainingValidation
+from mvu.dataset.specialized.baselines import splitTrainingValidation, getTransform
 from ..meta import ImageDatasetMeta
 from ..torch_utils import TorchDatasetSplits
-from torchvision.transforms.functional import to_tensor
 
 
 class StarCraftDataset(Dataset[Tuple[Tensor, Tensor]]):
@@ -48,25 +47,24 @@ class StarCraftDataset(Dataset[Tuple[Tensor, Tensor]]):
         return (unitValues.to(torch.float32) / 127.5) - 1, targets
 
 
-def createDataset(path: str, train: bool, image_format: str = 'bag-of-units-first', image_size: int = None,
+def _createDataset(path: str, train: bool, transform: callable, image_format: str = 'bag-of-units-first', image_size: int = 64,
                   targets: Union[str, List[str]] = None) -> Dataset:
     if image_format == "cifar10":
-        assert image_size is None or image_size == 32, "StarCraft CIFAR10 requires image size of 32"
         assert targets is not None, "StartCraft CIFAR10 does not support targets"
         return StarCraftCIFAR10(
             root=path,
             train=train,
             download=True,
-            transform=lambda image: (to_tensor(image).to(torch.float32) * 2) - 1
+            transform=transform
         )
     else:
         # TODO: can directly use the original class likely
-        return StarCraftDataset(path, image_format, 64 if image_size is None else image_size, targets, train)
+        return StarCraftDataset(path, image_format, 64, targets, train)
 
 
 def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = None,
                            validation_percent: float = 0.3, samples: Dict[str,int] = None,
-                           image_format: str = 'bag-of-units-first',
+                           image_format: str = 'bag-of-units-first', zero_mean: bool = False, normalization: str = "0.5",
                            image_size: int = 64, sensor_size: int = 1) -> TorchDatasetSplits:
     """
     Creates the needed objects to use the starcraft dataset
@@ -75,6 +73,8 @@ def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = No
     :param validation_percent:  Percentage of training data to use for validation
     :param samples:             Maximum samples from the dataset to use for train, validate, and test.
     :param image_format:        Format to use for the dataset, supports 'bag-of-units-first' and 'cifar10'
+    :param zero_mean:           If true, transforms images to the range [-1, 1]. If false, leaves them at [0, 1]
+    :param normalization:       Normalization method to use for images. Defaults to 0.5 mean and std.
     :param image_size:          Size of the image in pixels
     :param sensor_size:         Size of sensors for making values missing
     :return:  Dataset instance
@@ -100,9 +100,12 @@ def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = No
     # TODO: can we reasonably support other image formats? for now hardcoding to 'bag-of-units-first'
     meta = ImageDatasetMeta("starcraft", targets, image_size, sensor_size, 3)
 
+    # find transform
+    transformFunc = getTransform(image_size, 32 if image_format == "cifar10" else 64, zero_mean, normalization)
+
     # we only have train and test for starcraft, so split train into train and validation by percent
     # TODO: consider supporting seeded randomizing the split indices? prevent bias due to ordering in the set
-    trainingValidation = createDataset(path, True, image_format, image_size, targets)
-    testing = createDataset(path, False, image_format, image_size, targets)
+    trainingValidation = _createDataset(path, True, transformFunc, image_format, image_size, targets)
+    testing = _createDataset(path, False, transformFunc, image_format, image_size, targets)
 
     return splitTrainingValidation(meta, trainingValidation, testing, validation_percent=validation_percent, samples=samples)

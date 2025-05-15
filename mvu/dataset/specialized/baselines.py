@@ -1,11 +1,12 @@
 import logging
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List
 
 import torch
+from torch import Tensor
 from torch.utils.data import Dataset, Subset
+from torchvision import transforms
 from torchvision.datasets import CIFAR10
-from torchvision.transforms.functional import to_tensor
 
 from mvu.dataset.meta import DatasetMeta, ImageDatasetMeta
 from mvu.dataset.torch_utils import TorchDatasetSplits
@@ -47,21 +48,58 @@ def splitTrainingValidation(meta: DatasetMeta, trainingValidation: Dataset, test
 
     return TorchDatasetSplits(training, validation, testing, meta)
 
-def _getCIFAR10Dataset(path: str, train: bool) -> Dataset:
+
+def _transformZeroMean(tensor: Tensor):
+    """Transformation used to match the CelebA diffusion model"""
+    return (tensor.to(torch.float32) * 2) - 1
+
+def getTransform(image_size: int, original_size: int, zero_mean: bool = False, normalization: str = "none") -> callable:
+    """Gets the image transform for the given name and sizes."""
+
+    toApply: List[callable] = []
+    # resize if requested
+    if image_size != original_size:
+        logging.info(f"Resizing images from {original_size} to {image_size}")
+        toApply.append(transforms.Resize(image_size))
+
+    # always convert to tensor
+    toApply.append(transforms.ToTensor())
+
+    # compatability with CelebA diffusion model
+    if zero_mean:
+        toApply.append(_transformZeroMean)
+
+    # select normalization
+    if normalization == "cifar10":
+        logging.info(f"Applying CIFAR10 standard normalization")
+        toApply.append(transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261]))
+    elif normalization == "0.5":
+        logging.info(f"Applying 0.5 normalization")
+        toApply.append(transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]))
+    elif normalization != "none":
+        raise ValueError(f"Unknown transform: {normalization}")
+
+    # return final combination
+    return transforms.Compose(toApply)
+
+
+def _getCIFAR10Dataset(path: str, train: bool, transform: callable) -> Dataset:
     """Helper to ensure same parameters for train vs test in CIFAR10"""
     return CIFAR10(
         root=path,
         train=train,
         download=True,
-        transform=lambda image: (to_tensor(image).to(torch.float32) * 2) - 1
+        transform=transform
     )
 
-def createCIFAR10Dataset(path: str = None, validation_percent: float = 0.3, samples: Dict[str,int] = None, sensor_size: int = 1) -> TorchDatasetSplits:
+def createCIFAR10Dataset(path: str = None, validation_percent: float = 0.3, samples: Dict[str,int] = None, zero_mean: bool = False, normalization: str = "cifar10", image_size: int = 32, sensor_size: int = 1) -> TorchDatasetSplits:
     """
     Helper to load in CIFAR10 in the format we expect.
     :param path:                Location to load the starcraft dataset into.
     :param validation_percent:  Percentage of training data to use for validation.
     :param samples:             Maximum samples from the dataset to use for train, validate, and test.
+    :param zero_mean:           If true, transforms images to the range [-1, 1]. If false, leaves them at [0, 1]
+    :param normalization:       Normalization method to use for images. Defaults to standard for CIFAR10
     :param sensor_size:         Size of sensors for making values missing.
     :return:  Dataset instance
     """
@@ -74,10 +112,11 @@ def createCIFAR10Dataset(path: str = None, validation_percent: float = 0.3, samp
     logging.info(f"Using {len(targets)} CIFAR10 targets: {targets}")
 
     # create metadata
-    meta = ImageDatasetMeta("cifar10", targets, 32, sensor_size, 3)
+    meta = ImageDatasetMeta("cifar10", targets, image_size, sensor_size, 3)
 
     # fetch CIFAR10
-    trainingValidation = _getCIFAR10Dataset(path, True)
-    testing = _getCIFAR10Dataset(path, False)
+    transformFunc = getTransform(image_size, 32, zero_mean, normalization)
+    trainingValidation = _getCIFAR10Dataset(path, True, transformFunc)
+    testing = _getCIFAR10Dataset(path, False, transformFunc)
 
     return splitTrainingValidation(meta, trainingValidation, testing, validation_percent=validation_percent, samples=samples)
