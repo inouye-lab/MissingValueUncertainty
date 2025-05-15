@@ -6,11 +6,11 @@ import os
 from typing import List, Optional
 
 import torch
-from torch import nn
+from torch import nn, Tensor
 from torch.utils.data import DataLoader
 
 from mvu.dataset.loader import getDatasetSplits
-from mvu.dataset.mutators import SpecificFeatureRemovingDataset, createMask, IncludeMask
+from mvu.dataset.mutators import SpecificFeatureRemovingDataset, createMask, IncludeMask, randomDropping
 from mvu.dataset.specialized.celeba import CelebADataset
 from mvu.explanation.actions import createActionSpace
 from mvu.explanation.calibration import CalibrationExperiment
@@ -33,12 +33,15 @@ if __name__ == '__main__':
     parser.add_argument("name", type=str, help='Name of the dataset to parse')
     parser.add_argument("--dataset", type=json.loads, default=dict(), help='Dataset arguments')
     parser.add_argument("--cache_directory", type=str, default=None, help='Location to build the cache')
-    parser.add_argument("--mask", type=jsonOrName, help="Name of the mask to use")
     parser.add_argument("--output", type=str, default="./results/", help='Location to save result CSV')
 
     parser.add_argument("--classifier", type=str, help='Path to the pretrained regressor to load')
     parser.add_argument("--classifier_feature", type=str, default=None,
                         help='Feature index from the regressor to use, if -1 uses all features')
+
+    # mutator
+    parser.add_argument("--mask", type=jsonOrName, default=None, help="Name of the mask to use")
+    parser.add_argument("--drop", type=jsonOrName, help="Drop method to use if no mask")
 
     # experiment parameters
     parser.add_argument("--threads", type=int, default=-1, help='Number of worker threads to run')
@@ -104,7 +107,9 @@ if __name__ == '__main__':
 
     # determine mask
     logging.info("Loading mask " + args.mask["name"])
-    mask = createMask(ds.metadata, **args.mask)
+    mask: Optional[Tensor] = None
+    if args.mask is not None:
+        mask = createMask(ds.metadata, **args.mask)
 
     # start setup for decision makers
     decisionMakers: List[DecisionMaker] = []
@@ -128,12 +133,15 @@ if __name__ == '__main__':
     # add generator method if we have a caching batch generator
     generator: Optional[BatchGenerator] = None
     if args.cache_directory is not None:
-        logging.info(f"Creating generator using cache at {args.cache_directory}")
-        generator = CachingBatchGenerator(None, args.cache_directory, mask.to(device))
-        methods.extend(
-            MonteCarloBatchMethod(classifier, generator, samples)
-            for samples in args.generator_samples
-        )
+        if mask is None:
+            logging.error("Attempting to use a cache directory with no mask, this does not work")
+        else:
+            logging.info(f"Creating generator using cache at {args.cache_directory}")
+            generator = CachingBatchGenerator(None, args.cache_directory, mask.to(device))
+            methods.extend(
+                MonteCarloBatchMethod(classifier, generator, samples)
+                for samples in args.generator_samples
+            )
 
     # basic imputation
     if args.zero_variance or len(args.beta_variance_scales) > 0:
@@ -174,8 +182,15 @@ if __name__ == '__main__':
 
     # setup datasets
     # if we have any methods beyond the Dirichlet, then use nan for the missing value. 0 is faster but isn't what most methods support
-    dsMissing = SpecificFeatureRemovingDataset(ds.test, mask, includeMask=includeMask, missingValue=torch.nan if len(methods) > 0 else 0)
+    missingArgs = dict(includeMask=includeMask, missingValue=torch.nan if len(methods) > 0 else 0)
+    if mask is not None:
+        logging.info(f"Using masked dataset with mask {args.mask}")
+        dsMissing = SpecificFeatureRemovingDataset(ds.test, mask, **missingArgs)
+    else:
+        logging.info(f"Using randon dropping with arguments {args.drop}")
+        dsMissing = randomDropping(ds.test, ds.metadata, **missingArgs, **args.drop)
 
+    # TODO: our newer datasets support returning the original if prompted, don't need loaderClean
     loaderClean = DataLoader(ds.test, batch_size=args.batch_size, pin_memory=True)
     loaderMissing = DataLoader(dsMissing, batch_size=args.batch_size, pin_memory=True)
 
