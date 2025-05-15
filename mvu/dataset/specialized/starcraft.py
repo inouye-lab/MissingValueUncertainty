@@ -4,10 +4,11 @@ from typing import Tuple, List, Union, Dict
 
 import torch
 from overrides import override
-from sc2image import StarCraftImage, StarCraftCIFAR10
+from sc2image import StarCraftImage, StarCraftCIFAR10, StarCraftMNIST
 from torch import Tensor
-from torch.utils.data import Dataset, Subset
+from torch.utils.data import Dataset
 
+from mvu.dataset.specialized.baselines import splitTrainingValidation
 from ..meta import ImageDatasetMeta
 from ..torch_utils import TorchDatasetSplits
 from torchvision.transforms.functional import to_tensor
@@ -47,10 +48,10 @@ class StarCraftDataset(Dataset[Tuple[Tensor, Tensor]]):
         return (unitValues.to(torch.float32) / 127.5) - 1, targets
 
 
-def createDataset(path: str, train: bool, image_format: str = 'bag-of-units-first', image_size: int = 64,
+def createDataset(path: str, train: bool, image_format: str = 'bag-of-units-first', image_size: int = None,
                   targets: Union[str, List[str]] = None) -> Dataset:
     if image_format == "cifar10":
-        assert image_size == 32, "StarCraft CIFAR10 requires image size of 32"
+        assert image_size is None or image_size == 32, "StarCraft CIFAR10 requires image size of 32"
         assert targets is not None, "StartCraft CIFAR10 does not support targets"
         return StarCraftCIFAR10(
             root=path,
@@ -60,7 +61,7 @@ def createDataset(path: str, train: bool, image_format: str = 'bag-of-units-firs
         )
     else:
         # TODO: can directly use the original class likely
-        return StarCraftDataset(path, image_format, image_size, targets, train)
+        return StarCraftDataset(path, image_format, 64 if image_size is None else image_size, targets, train)
 
 
 def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = None,
@@ -84,9 +85,16 @@ def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = No
 
     # ensure targets is always a list
     if targets is None:
-        targets = []
+        if image_format == "cifar10":
+            targets = [f"{map} at {time}" for (map, time) in StarCraftMNIST.classes]
+        else:
+            targets = []
     elif isinstance(targets, str):
         targets = [targets]
+    elif image_format == "cifar10":
+        raise NotImplementedError("CIFAR10 does not currently support changing target list")
+
+    logging.info(f"Using {len(targets)} StarCraft targets: {targets}")
 
     # create metadata using
     # TODO: can we reasonably support other image formats? for now hardcoding to 'bag-of-units-first'
@@ -97,28 +105,4 @@ def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = No
     trainingValidation = createDataset(path, True, image_format, image_size, targets)
     testing = createDataset(path, False, image_format, image_size, targets)
 
-    # handle limits, for quicker testing
-    # no extra work if limits are not defined
-    trainingValidationSize = len(trainingValidation)
-    validationEnd = int(trainingValidationSize * validation_percent)
-    trainingStart = validationEnd
-    trainingEnd = trainingValidationSize
-    if samples is not None:
-        # training has a start offset and an end, so need some math to convert the limit
-        if "train" in samples:
-            trainLimit = samples["test"]
-            if trainLimit < trainingEnd - trainingStart:
-                trainingEnd = trainingStart + trainLimit
-        # validate is easy to limit, just reduce max samples
-        if "validate" in samples:
-            validationEnd = min(validationEnd, samples["validate"])
-        # only make test a subset if needed, can use the raw dataset otherwise
-        if "test" in samples:
-            testLimit = samples["test"]
-            if testLimit < len(testing):
-                testing = Subset(testing, range(0, testLimit))
-    # apply the computed limits
-    training = Subset(trainingValidation, range(trainingStart, trainingEnd))
-    validation = Subset(trainingValidation, range(0, validationEnd))
-
-    return TorchDatasetSplits(training, validation, testing, meta)
+    return splitTrainingValidation(meta, trainingValidation, testing, validation_percent=validation_percent, samples=samples)
