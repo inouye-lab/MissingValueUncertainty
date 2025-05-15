@@ -9,8 +9,12 @@ feature=$1
 model=$2
 mask=$3
 cuda=$4
-all=""
+calibration=""
 if [ $# -ge 5 ]; then
+  calibration="--calibration_map ./results/calibration/$feature/$5.csv" # CSV file for dictionary thing
+fi
+all=""
+if [ $# -ge 6 ]; then
   all="
     --cache_directory ../../datasets/CelebAMask/cache/256/${mask}_test
     --generator_samples 3 30
@@ -24,14 +28,14 @@ shift 4
 source ../../miniconda/bin/activate
 conda activate ./venv
 
-python mvce_dataset.py celeba --output ./results/mvce-25/$feature/$mask/ \
+python calibrate_dataset_test.py celeba --output ./results/mvce-25/$feature/$mask/ \
     --dataset '{
-      "path": "../../datasets/CelebAMask/256/img",
+      "path": "/local/scratch/a/dburnet/datasets/CelebAMask/256/img",
       "lists_root": "datasets/celeba",
-      "attributes_path": "../../datasets/CelebAMask/1024/CelebAMask-HQ-attribute-anno.txt",
+      "attributes_path": "/local/scratch/a/dburnet/datasets/CelebAMask/1024/CelebAMask-HQ-attribute-anno.txt",
       "return_index": true,
       "targets": ["'$feature'"]
     }' \
-    --classifier "./models/dirichlet-celeba/$feature/celeba-$model.pklz" \
-    --cuda_index $cuda --mask $mask $all \
+    --classifier "/local/scratch/a/dburnet/research/MissingValueUncertainty/models/dirichlet-celeba/$feature/celeba-$model.pklz" \
+    --cuda_index $cuda --mask $mask $all $calibration \
     --action_spaces zero-one --threads 4 --trials 4

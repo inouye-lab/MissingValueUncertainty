@@ -67,6 +67,11 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
             # ensure that all samples in this batch can be processed, lets us skip non-cached images when using a cache
             supportedIndices = decisionMaker.supportsIndices(sampleIndices)
             # skip the batch if it has no processable samples
+            # NEW LINES #
+            # debug which samples are skipped
+            logging.warning(
+                f"Skipping samples at indices {sampleIndices[~supportedIndices]}, unsupported by decision maker")
+            # END NEW #
             if torch.count_nonzero(supportedIndices) == 0:
                 continue
             sampleIndices = sampleIndices[supportedIndices]
