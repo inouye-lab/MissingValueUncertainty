@@ -10,7 +10,7 @@ from torch import Tensor, Generator, nn
 from torch.nn import Identity
 from torch.utils.data import DataLoader, Dataset
 
-from mvu.dataset.mutators import IncludeMask, BlockRemovingDataset
+from mvu.dataset.mutators import IncludeMask, randomDropping
 from mvu.dataset.loader import getDatasetSplits
 from mvu.dataset.mutators import createMask, RandomMaskedDataset, distributeMasks
 from mvu.logger import setupLogging
@@ -34,7 +34,7 @@ if __name__ == '__main__':
 
     # missing features
     parser.add_argument("--masks", type=jsonOrName, nargs="*", default=[], help="Name of the masks to use")
-    parser.add_argument("--drop", type=json.loads, default=dict(), help="Parameters for dropping for the dataset")
+    parser.add_argument("--drop", type=jsonOrName, default=dict(), help="Parameters for dropping for the dataset")
 
     # training
     parser.add_argument('--training_iterations', type=int, default=200,
@@ -123,17 +123,20 @@ if __name__ == '__main__':
     maskedValidation: Dataset
     # when we have a teacher, don't give the teacher data with the mask
     includeMask = IncludeMask.ALWAYS if args.teacher is None else IncludeMask.MISSING
+
+    commonMaskArgs = dict(missingValue=0, includeMask=includeMask, returnOriginal=True)
+
     if len(args.masks) > 0:
         logging.info(f"Using masked missingness with {args.masks}")
         masks = [createMask(ds.metadata, **mask) for mask in args.masks]
         # for training, randomly choose mask
-        maskedTraining = RandomMaskedDataset(ds.train, masks, rand, missingValue=0, includeMask=includeMask, returnOriginal=True)
+        maskedTraining = RandomMaskedDataset(ds.train, masks, rand, **commonMaskArgs)
         # for validation, split the set into parts using each mask
-        maskedValidation = distributeMasks(ds.validate, masks, rand, missingValue=0, includeMask=includeMask, returnOriginal=True)
+        maskedValidation = distributeMasks(ds.validate, masks, rand, **commonMaskArgs)
     else:
-        logging.info(f"Using block missingness with {args.drop}")
-        maskedTraining   = BlockRemovingDataset.fromMetadata(ds.train,    ds.metadata, missingValue=0, includeMask=includeMask, returnOriginal=True, **args.drop)
-        maskedValidation = BlockRemovingDataset.fromMetadata(ds.validate, ds.metadata, missingValue=0, includeMask=includeMask, returnOriginal=True, **args.drop)
+        logging.info(f"Using randon dropping with arguments {args.drop}")
+        maskedTraining   = randomDropping(ds.train,    ds.metadata, **commonMaskArgs, **args.drop)
+        maskedValidation = randomDropping(ds.validate, ds.metadata, **commonMaskArgs, **args.drop)
 
     # setup data loading
     trainLoader    = DataLoader(maskedTraining,   batch_size=args.batch_size, shuffle=True,  generator=rand, pin_memory=True)

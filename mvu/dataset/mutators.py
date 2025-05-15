@@ -1,3 +1,5 @@
+import logging
+from abc import abstractmethod, ABC
 from math import ceil
 
 import torch
@@ -183,8 +185,63 @@ class FeatureCountRemovingDataset(DatasetWrapper[T_co]):
         return data
 
 
-class BlockRemovingDataset(MaskedDataset):
+class BlockRemovingDataset(MaskedDataset, ABC):
     """Dataset that removes random blocks from the image"""
+
+    imageSize: int
+    """Image size in pixels"""
+    sensorSize: int
+    """Size of each block"""
+    channels: int
+    """Number of image channels"""
+
+    totalBlocks: int
+    """Number of blocks in the image"""
+    rand: Optional[Generator]
+    """Random state"""
+    groups: Tensor
+    """Integers assigning each pixel in the 3 channels to a block index"""
+
+    def __init__(self, base: Dataset[T_co], imageSize: int, sensorSize: int, channels: int,
+                 *args,
+                 rand: Optional[Generator] = None,
+                 **kwargs):
+        super().__init__(base, torch.empty((1,)), *args, **kwargs)
+        self.imageSize = imageSize
+        self.sensorSize = sensorSize
+        self.channels = channels
+        self.rand = rand
+
+        # prepare details for dropping
+        self.sensorsPerAxis = ceil(imageSize / sensorSize)
+        self.totalBlocks = self.sensorsPerAxis ** 2
+
+    @classmethod
+    def fromMetadata(cls, base: Dataset[T_co], meta: DatasetMeta, *args, **kwargs):
+        """Constructs this dataset using an image metadata"""
+        if not isinstance(meta, ImageDatasetMeta):
+            raise TypeError(f"Expected ImageDatasetMeta, got {type(meta)}")
+        return cls(base, meta.imageSize, meta.sensorSize, meta.channels, *args, **kwargs)
+
+    def blocksToImage(self, blocks: Tensor) -> Tensor:
+        """
+        Converts the given tensor of the number of blocks into an image of the appropriate size
+        """
+        return (blocks.reshape(self.sensorsPerAxis, self.sensorsPerAxis)
+         # repeat across both axes, then crop to image size (in case of non-square)
+         .repeat_interleave(self.sensorSize, dim=0)
+         .repeat_interleave(self.sensorSize, dim=1)[0:self.imageSize, 0:self.imageSize]
+         # finally, add in the number of channels
+         .reshape(-1, self.imageSize, self.imageSize).repeat_interleave(self.channels, dim=0))
+
+    @abstractmethod
+    @override
+    def _getFeaturesToDrop(self, item) -> Tensor:
+        pass
+
+
+class BlockCountRemovingDataset(BlockRemovingDataset):
+    """Block removing dataset that removes blocks with a uniform sampled count"""
 
     featureWeights: Tensor
     """Tensor of 1s of the proper size for multinomial sampling"""
@@ -193,51 +250,32 @@ class BlockRemovingDataset(MaskedDataset):
     """Minimum number of blocks to drop"""
     dropMax: int
     """Maximum number of blocks to drop"""
-    rand: Optional[Generator]
-    """Random state"""
-    groups: Tensor
-    """Integers assigning each pixel in the 3 channels to a block index"""
+
     all: Tensor
     """Mask representing all features dropped"""
     none: Tensor
     """Mask representing no features dropped"""
 
-    def __init__(self, base: Dataset[T_co], imageSize: int, sensorSize: int, channels: int,
-                 *args,
+    def __init__(self, base: Dataset[T_co], *args,
                  dropMin: int = 0, dropMax: int = None,
-                 rand: Optional[Generator] = None,
                  **kwargs):
-        super().__init__(base, torch.empty((1,)), *args, **kwargs)
-        self.rand = rand
+        super().__init__(base, *args, **kwargs)
 
-        # prepare details for dropping
-        sensorsPerAxis = ceil(imageSize / sensorSize)
-        self.totalBlocks = sensorsPerAxis ** 2
-        self.featureWeights = torch.ones(self.totalBlocks)
         # use total blocks for max if unset
         if dropMax is None:
             dropMax = self.totalBlocks
         assert 0 <= dropMin <= dropMax <= self.totalBlocks, "Min must be less than max, and both between 0 and the number of blocks"
         self.dropMin = dropMin
         self.dropMax = dropMax
+        self.none = torch.zeros((self.channels, self.imageSize, self.imageSize), dtype=torch.bool)
+        self.all = torch.ones((self.channels, self.imageSize, self.imageSize), dtype=torch.bool)
+
+        # weights for multinomial
+        self.featureWeights = torch.ones(self.totalBlocks)
 
         # construct grid of sensor index for each location
         # start with a list from 0 to N, reshape into a grid
-        self.groups = (torch.arange(0, self.totalBlocks).reshape(sensorsPerAxis, sensorsPerAxis)
-                       # repeat across both axes, then crop to image size (in case of non-square)
-                       .repeat_interleave(sensorSize, dim=0)
-                       .repeat_interleave(sensorSize, dim=1)[0:imageSize, 0:imageSize]
-                       # finally, add in the number of channels
-                       .reshape(-1, imageSize, imageSize).repeat_interleave(channels, dim=0))
-        self.none = torch.zeros((channels, imageSize, imageSize), dtype=torch.bool)
-        self.all = torch.ones((channels, imageSize, imageSize), dtype=torch.bool)
-
-    @classmethod
-    def fromMetadata(cls, base: Dataset[T_co], meta: DatasetMeta, *args, **kwargs):
-        """Constructs this dataset using an image metadata"""
-        if not isinstance(meta, ImageDatasetMeta):
-            raise TypeError(f"Expected ImageDatasetMeta, got {type(meta)}")
-        return cls(base, meta.imageSize, meta.sensorSize, meta.channels, *args, **kwargs)
+        self.groups = self.blocksToImage(torch.arange(0, self.totalBlocks))
 
     def _getBlocksToDrop(self) -> int:
         """Gets the number of blocks to drop"""
@@ -248,7 +286,6 @@ class BlockRemovingDataset(MaskedDataset):
 
     @override
     def _getFeaturesToDrop(self, item) -> Tensor:
-        """Gets the mask to drop"""
         # find out how many to drop, can skip multinomial if none or all
         numToDrop = self._getBlocksToDrop()
         if numToDrop <= 0:
@@ -263,7 +300,22 @@ class BlockRemovingDataset(MaskedDataset):
         return torch.isin(self.groups, dropIndexes)
 
 
+class BlockDropoutDataset(BlockRemovingDataset):
+    """Block removing dataset which has a chance to drop each block"""
 
+    dropChances: Tensor
+
+    def __init__(self, base: Dataset[T_co], imageSize: int, sensorSize: int, channels: int, *args,
+                 dropChance: float = 0.5,
+                 **kwargs):
+        super().__init__(base, imageSize, sensorSize, channels, *args, **kwargs)
+        assert 0 < dropChance < 1, "Drop chance must be a percentage between 0 and 1"
+
+        self.dropChances = torch.tensor([dropChance] * self.totalBlocks, dtype=torch.float)
+
+    @override
+    def _getFeaturesToDrop(self, item) -> Tensor:
+        return self.blocksToImage(torch.bernoulli(self.dropChances, generator=self.rand).to(torch.bool))
 
 def createMask(meta: Optional[DatasetMeta], name: str, image_size: int = None, channels: int = None) -> Tensor:
     """
@@ -326,3 +378,14 @@ def distributeMasks(dataset: Dataset, masks: List[Tensor], rand: Generator = Non
     subsets = splitDataset(dataset, len(masks), rand)
     masked = [MaskedDataset(subset, mask, *args, **kwargs) for subset, mask in zip(subsets, masks)]
     return ConcatDataset(masked)
+
+
+def randomDropping(dataset: Dataset, meta: DatasetMeta, name: str = "", **kwargs) -> Dataset:
+    """Creates a random dropping dataset with the given parameters"""
+
+    if name == "block-count":
+        return BlockCountRemovingDataset.fromMetadata(dataset, meta, **kwargs)
+    elif name == "block-dropout":
+        return BlockDropoutDataset.fromMetadata(dataset, meta, **kwargs)
+    else:
+        raise ValueError(f"Unknown random dropping method name '{name}'")
