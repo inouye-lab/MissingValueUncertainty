@@ -103,7 +103,10 @@ if __name__ == '__main__':
         teacher.to(device)
         teacher.nn.eval()
         # TODO: is there a way to not hardcode this?
-        teacher.activation = nn.Sigmoid()
+        if len(ds.metadata.labels) == 1:
+            teacher.activation = nn.Sigmoid()
+        else:
+            teacher.activation = nn.Softmax(dim=1)
     else:
         teacher = model
 
