@@ -26,7 +26,24 @@ def estimateBetaParametersFromMoments(mean: Tensor, var: Tensor) -> Tuple[Tensor
     # since we want to swap alpha and beta based on swapped, but also want to negate the two, it works out nicely
     # (mean-swapped) is either mean or (mean-1)=-(1-mean)
     # (1-mean-swapped) is either (1-mean) or -mean
-    return torch.clamp((mean - swapped) * common, min=1e-35), torch.clamp((1 - mean - swapped) * common, min=1e-35)
+    alpha = torch.clamp((mean - swapped) * common, min=1e-35)
+    # map any nans to infinity (if 1) or 0 (if 0); usually are caused by overconfident features
+    nan = torch.isnan(alpha)
+    if nan.any():
+        alpha[torch.logical_and(nan, mean == 1)] = torch.inf
+        alpha[torch.logical_and(nan, mean == 0)] = 1e-35
+
+    # only compute beta if needed
+    if len(alpha.shape) > 0 and alpha.shape[0] > 1:
+        beta = torch.clamp((1 - mean - swapped) * common, min=1e-35)
+        nan = torch.isnan(beta)
+        if nan.any():
+            beta[torch.logical_and(nan, mean == 1)] = 1e-35
+            beta[torch.logical_and(nan, mean == 0)] = torch.inf
+    else:
+        # unused, but easier if its a tensor
+        beta = torch.zeros((1,))
+    return alpha, beta
 
 
 def _toDistribution(mean: Tensor, var: Tensor, alpha: Tensor, beta: Tensor) -> Distribution:
