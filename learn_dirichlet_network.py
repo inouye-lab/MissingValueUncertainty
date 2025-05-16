@@ -126,6 +126,7 @@ if __name__ == '__main__':
 
     commonMaskArgs = dict(missingValue=0, includeMask=includeMask, returnOriginal=True)
 
+    masks: List[Tensor] = []
     if len(args.masks) > 0:
         logging.info(f"Using masked missingness with {args.masks}")
         masks = [createMask(ds.metadata, **mask) for mask in args.masks]
@@ -245,8 +246,11 @@ if __name__ == '__main__':
 
     # final evaluation of the model (done after saving as we don't need the result to save, and it might be slow)
     model.nn.to(device)
-    maskedTest = distributeMasks(ds.test, masks, rand, missingValue=0, returnOriginal=True,
-                                 includeMask=IncludeMask.ALWAYS if args.teacher is None else IncludeMask.MISSING)
+    if len(masks) > 0:
+        maskedTest = distributeMasks(ds.test, masks, rand, **commonMaskArgs)
+    else:
+        maskedTest = randomDropping(ds.test, ds.metadata, **commonMaskArgs, **args.drop)
+
     testLoader = DataLoader(maskedTest, batch_size=args.batch_size, shuffle=False, generator=rand, pin_memory=True)
     for (name, loader) in [("train", trainLoader), ("validate", validateLoader), ("test", testLoader)]:
         result = Regressor.evaluateData(loader, batchHandler)
