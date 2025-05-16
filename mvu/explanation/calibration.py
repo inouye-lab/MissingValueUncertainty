@@ -1,6 +1,6 @@
 import logging
 from time import perf_counter
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Tuple
 
 import torch
 from torch import Tensor, Generator
@@ -22,7 +22,8 @@ def bestActionWithoutMissing(features: Tensor, classifier: Regressor, lossFuncti
 
 def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMaker: DecisionMaker,
                 lossFunction: Union[callable,List[callable]], actions: Tensor, buckets: int,
-                classifier: Regressor = None, rand: Generator = None, device: Optional[torch.device] = None) -> Tensor:
+                classifier: Regressor = None, rand: Generator = None, device: Optional[torch.device] = None,
+                avgConsistency: bool = False) -> Union[Tensor, Tuple[Tensor, Tensor]]:
     """
     Computes the missing value calibration error for the given decision maker.
     :param cleanLoader:     DataLoader for data with no missingness,
@@ -32,6 +33,7 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
     :param lossFunction:    Loss function for the action space. TODO: update why list
     :param actions:         Action space.
     :param buckets:         Number of buckets for computing the calibration error.
+    :param avgConsistency   If true, returns average consistency with MVCE
     :param classifier:      Classifier for predicting best actions without missingness.
                             If none, cleanLoader is assumed best actions.
     :param rand:            Random state.
@@ -47,6 +49,8 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
     predictedActionCount = torch.zeros_like(actions, dtype=torch.int)
     actionsLen = len(actions)
     aleatoricIndex = actionsLen - 1  # TODO: this is messy
+
+    consistentSamples = torch.zeros((1,), dtype=torch.int, device=device)
 
     isLossList = isinstance(lossFunction, List)
     for i, (cleanBatch, mutatedBatch) in enumerate(zip(cleanLoader, mutatedLoader)):
@@ -66,8 +70,15 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
             sampleIndices = mutatedBatch[2]
             # ensure that all samples in this batch can be processed, lets us skip non-cached images when using a cache
             supportedIndices = decisionMaker.supportsIndices(sampleIndices)
+
+            # debug which samples are skipped
+            # TODO: can we support integer tensors here?
+            if supportedIndices.dtype == torch.bool and torch.count_nonzero(~supportedIndices) == 0:
+                logging.warn(f"Skipping samples at indices {sampleIndices[~supportedIndices]}, unsupported by decision maker")
+
             # skip the batch if it has no processable samples
             if torch.count_nonzero(supportedIndices) == 0:
+                # TODO: log a warning here for any skipped samples
                 continue
             sampleIndices = sampleIndices[supportedIndices]
         else:
@@ -111,6 +122,8 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
 
         # consistency metric: actions match best actions
         consistency = torch.eq(predActions, bestActions)
+        # track total consistency
+        consistentSamples += torch.sum(consistency)
 
         # map -1 to max+1 for aleatoric actions so we can count those
         bestActions[bestActions == -1] = aleatoricIndex
@@ -136,6 +149,7 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
 
     totalSamples = bucketSizes.sum()
     mvce = (bucketSizes * torch.abs(bucketConsistency - bucketConfidence)).sum() / totalSamples
+    consistency = consistentSamples / totalSamples
     time = perf_counter() - time
     logging.info(f"""
         Computed MVCE {mvce.cpu().item()} for {decisionMaker.name} in {time} seconds with {buckets} buckets:
@@ -146,9 +160,12 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
         * Actions: {actions.cpu()}
         * Best Action Counts: {bestActionCount.cpu()}
         * Prediction Action Counts: {predictedActionCount.cpu()}
+        * Average consistency: {consistency.cpu().item()}
     """)
 
     # compute final MVCE metric
+    if avgConsistency:
+        return mvce, consistency
     return mvce
 
 
@@ -175,6 +192,8 @@ class CalibrationExperiment:
     """Duration of this experiment"""
     results: Tensor
     """MVCE results for this experiment, size is equal to trials"""
+    consistencies: Tensor
+    """Consistency results for this experiment, size is equal to trials"""
 
     def __init__(self, cleanLoader: DataLoader, maskName: str, mutatedLoader: DataLoader, decisionMaker: DecisionMaker,
                  actionName: str, lossFunction: callable, actions: Tensor, buckets: int, trials: int,
@@ -206,12 +225,14 @@ class CalibrationExperiment:
 
         try:
             self.results = torch.empty((self.trials,), dtype=torch.float)
+            self.consistencies = torch.empty((self.trials,), dtype=torch.float)
             for i in range(self.trials):
-                self.results[i] = computeMVCE(
+                 mvce, consistency = computeMVCE(
                     self.cleanLoader, self.mutatedLoader, self.decisionMaker,
                     self.lossFunction, self.actions, self.buckets, self.classifier,
-                    self.rand, self.device
-                ).cpu()
+                    self.rand, self.device, avgConsistency=True)
+                 self.results[i] = mvce.cpu()
+                 self.consistencies[i] = consistency.cpu()
         except KeyboardInterrupt as e:
             # this is just logging the context so we know which experiment was terminated
             # its in the log again later and earlier, but this reduces some of the debug time
@@ -236,7 +257,9 @@ class CalibrationExperiment:
         csvFile.writerow([
             "Method", "Action Space", "Mask", "Time",
             "MVCE Mean", "MVCE Std",
-            *[f"Trial {i+1}" for i in range(trials)]
+            "Consistency Mean", "Consistency Std",
+            *[f"Trial {i+1} MVCE" for i in range(trials)],
+            *[f"Trial {i+1} Consistency" for i in range(trials)]
         ])
 
     def writeResults(self, csvFile) -> None:
@@ -250,7 +273,9 @@ class CalibrationExperiment:
         csvFile.writerow([
             self.decisionMaker.name, self.actionName, self.maskName, self.time,
             self.results.mean().item(), self.results.std().item(),
-            *[result.item() for result in self.results]
+            self.consistencies.mean().item(), self.consistencies.std().item(),
+            *[result.item() for result in self.results],
+            *[result.item() for result in self.consistencies]
         ])
 
 # post-hoc
