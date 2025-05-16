@@ -241,6 +241,7 @@ class CalibrationExperiment:
         except BaseException as e:
             handleException(type(e), e, e.__traceback__,
                             message=f"Failed to process {self.experimentName}")
+            return
 
         # store final experiment time
         endTime = perf_counter()
