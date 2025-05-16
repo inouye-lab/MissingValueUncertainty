@@ -4,6 +4,7 @@ import json
 import logging
 import os
 from time import perf_counter
+from typing import List
 
 import torch
 from torch import Tensor, Generator, nn

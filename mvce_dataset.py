@@ -100,15 +100,15 @@ if __name__ == '__main__':
     # load in dataset
     ds = getDatasetSplits(args.name, **args.dataset)
     logging.info(f"Using dataset {args.name} with {len(ds.test)} test samples")
-    # TODO: generalize this code so other datasets can get original names
-    assert isinstance(ds.test, CelebADataset)
     if args.classifier_feature is not None:
+        # TODO: generalize this code so other datasets can get original names
+        assert isinstance(ds.test, CelebADataset)
         classifier.setFeatureIndex(ds.test.attributes.originalNames.index(args.classifier_feature))
 
     # determine mask
-    logging.info("Loading mask " + args.mask["name"])
     mask: Optional[Tensor] = None
     if args.mask is not None:
+        logging.info("Loading mask " + args.mask["name"])
         mask = createMask(ds.metadata, **args.mask)
 
     # start setup for decision makers
@@ -183,11 +183,14 @@ if __name__ == '__main__':
     # setup datasets
     # if we have any methods beyond the Dirichlet, then use nan for the missing value. 0 is faster but isn't what most methods support
     missingArgs = dict(includeMask=includeMask, missingValue=torch.nan if len(methods) > 0 else 0)
+    maskName: str
     if mask is not None:
         logging.info(f"Using masked dataset with mask {args.mask}")
+        maskName = args.mask["name"]
         dsMissing = SpecificFeatureRemovingDataset(ds.test, mask, **missingArgs)
     else:
         logging.info(f"Using randon dropping with arguments {args.drop}")
+        maskName = args.drop["name"] # TODO: use dataset name instead
         dsMissing = randomDropping(ds.test, ds.metadata, **missingArgs, **args.drop)
 
     # TODO: our newer datasets support returning the original if prompted, don't need loaderClean
@@ -196,12 +199,13 @@ if __name__ == '__main__':
 
     # finally, build experiment list
     experiments: List[CalibrationExperiment] = []
+    numClasses = 1 if args.classifier_feature is not None else len(ds.metadata.target)
     for actionParams in args.action_spaces:
         logging.info(f"Considering action space {actionParams['name']}")
-        lossFunction, actions = createActionSpace(size=args.class_count, device=device, **actionParams)
+        lossFunction, actions = createActionSpace(size=numClasses, device=device, **actionParams)
         for decisionMaker in decisionMakers:
             experiments.append(CalibrationExperiment(
-                loaderClean, args.mask["name"], loaderMissing,
+                loaderClean, maskName, loaderMissing,
                 decisionMaker=decisionMaker,
                 actionName=actionParams['name'], lossFunction=lossFunction, actions=actions,
                 buckets=args.buckets, trials=args.trials,
