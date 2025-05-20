@@ -8,7 +8,7 @@ from sc2image import StarCraftImage, StarCraftCIFAR10, StarCraftMNIST
 from torch import Tensor
 from torch.utils.data import Dataset
 
-from mvu.dataset.specialized.baselines import splitTrainingValidation, getTransform
+from mvu.dataset.specialized.baselines import getTransform
 from ..meta import ImageDatasetMeta
 from ..torch_utils import TorchDatasetSplits
 
@@ -64,8 +64,8 @@ def _createDataset(path: str, train: bool, transform: callable, image_format: st
 
 def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = None,
                            validation_percent: float = 0.3, samples: Dict[str,int] = None,
-                           image_format: str = 'bag-of-units-first', zero_mean: bool = False, normalization: str = "0.5",
-                           image_size: int = 64, sensor_size: int = 1) -> TorchDatasetSplits:
+                           image_format: str = 'bag-of-units-first',
+                           image_size: int = 64, sensor_size: int = 1, **kwargs) -> TorchDatasetSplits:
     """
     Creates the needed objects to use the starcraft dataset
     :param path:                Location to load the starcraft dataset into
@@ -73,10 +73,9 @@ def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = No
     :param validation_percent:  Percentage of training data to use for validation
     :param samples:             Maximum samples from the dataset to use for train, validate, and test.
     :param image_format:        Format to use for the dataset, supports 'bag-of-units-first' and 'cifar10'
-    :param zero_mean:           If true, transforms images to the range [-1, 1]. If false, leaves them at [0, 1]
-    :param normalization:       Normalization method to use for images. Defaults to 0.5 mean and std.
     :param image_size:          Size of the image in pixels
     :param sensor_size:         Size of sensors for making values missing
+    :param kwargs:              Additional image transform parameters
     :return:  Dataset instance
     """
     assert path is not None, "Must pass in a path to use the starcraft dataset"
@@ -101,11 +100,11 @@ def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = No
     meta = ImageDatasetMeta("starcraft", targets, image_size, sensor_size, 3)
 
     # find transform
-    transformFunc = getTransform(image_size, 32 if image_format == "cifar10" else 64, zero_mean, normalization)
+    transformFunc = getTransform(image_size, 32 if image_format == "cifar10" else 64, **kwargs)
 
     # we only have train and test for starcraft, so split train into train and validation by percent
     # TODO: consider supporting seeded randomizing the split indices? prevent bias due to ordering in the set
     trainingValidation = _createDataset(path, True, transformFunc, image_format, image_size, targets)
     testing = _createDataset(path, False, transformFunc, image_format, image_size, targets)
 
-    return splitTrainingValidation(meta, trainingValidation, testing, validation_percent=validation_percent, samples=samples)
+    return TorchDatasetSplits.split(meta, trainingValidation, testing, validation_percent=validation_percent, samples=samples)
