@@ -1,12 +1,13 @@
 import json
 import logging
 from json import JSONDecodeError
-from typing import Union, Dict, List
+from typing import Union, Dict, List, Optional
 
 import torch
 from torch import Tensor, device
 from torch.nn import Module
 from torch.optim import Optimizer, SGD, Adam
+from torch.optim.lr_scheduler import LRScheduler, CosineAnnealingLR, StepLR
 from torch.utils.data import DataLoader
 
 from .model.regressor import Regressor
@@ -107,3 +108,15 @@ def getOptimizer(model: Module, name: str = "", **kwargs) -> Optimizer:
         return SGD(model.parameters(), **kwargs)
     else:
         raise ValueError(f"Unknown optimizer name: {name}")
+
+
+def getScheduler(optimizer: Optimizer, name: str = "none", **kwargs) -> Optional[LRScheduler]:
+    """Creates an optimizer from the given arguments"""
+    if name == "none":
+        return None
+    elif name == "step-decay":
+        logging.info(f"Step-decay optimizer configuration: {kwargs}")
+        return StepLR(optimizer, **kwargs)
+    elif name == "cosine-annealing":
+        logging.info(f"Cosine-annealing optimizer configuration: {kwargs}")
+        return CosineAnnealingLR(optimizer, **kwargs)

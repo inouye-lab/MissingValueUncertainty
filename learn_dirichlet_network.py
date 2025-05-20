@@ -19,7 +19,7 @@ from mvu.model.loader import createRegressorFromJson
 from mvu.model.loss import DirichletLoss, DirichletStrengthLogitLoss
 from mvu.model.regressor import NeuralNetworkRegressor, Regressor
 from mvu.model.specialized.resnet import Resnet18DirichletStrength
-from mvu.util import jsonOrString, selectDevice, jsonOrName, getOptimizer
+from mvu.util import jsonOrString, selectDevice, jsonOrName, getOptimizer, getScheduler
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -51,6 +51,7 @@ if __name__ == '__main__':
 
     # optimizer
     parser.add_argument("--optimizer", type=jsonOrName, default="adam", help='Optimizer choice')
+    parser.add_argument("--scheduler", type=jsonOrName, default=dict(), help='Scheduler configuration')
 
     # loss function config
     parser.add_argument('--masked_weight', type=float, default=0.5,
@@ -121,6 +122,7 @@ if __name__ == '__main__':
 
     # other setup
     optimizer = getOptimizer(model.nn, **args.optimizer)
+    scheduler = getScheduler(optimizer, **args.scheduler)
 
     # setup mutator
     maskedTraining: Dataset
@@ -233,6 +235,10 @@ if __name__ == '__main__':
                 bestParams = copy.deepcopy(model.nn.state_dict())
                 validationBest = validationErrorMean
                 validationFails = 0
+
+        # increment the scheduler
+        if scheduler is not None:
+            scheduler.step()
 
     # restore best model
     endTime = perf_counter()

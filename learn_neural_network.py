@@ -14,7 +14,7 @@ from mvu.dataset.loader import getDatasetSplits
 from mvu.logger import setupLogging
 from mvu.model.loader import createRegressorFromJson
 from mvu.model.regressor import NeuralNetworkRegressor
-from mvu.util import jsonOrString, selectDevice, getOptimizer, jsonOrName
+from mvu.util import jsonOrString, selectDevice, getOptimizer, jsonOrName, getScheduler
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -43,7 +43,8 @@ if __name__ == '__main__':
     parser.add_argument("--loss", type=str, default=None, help='Loss function to employ')
 
     # optimizer
-    parser.add_argument("--optimizer", type=jsonOrName, default="adam", help='Optimizer choice')
+    parser.add_argument("--optimizer", type=jsonOrName, default=dict(), help='Optimizer choice')
+    parser.add_argument("--scheduler", type=jsonOrName, default=dict(), help='Scheduler configuration')
 
     # model parameters
     parser.add_argument("--input", type=str, default=None, help='Input model to continue training')
@@ -100,6 +101,7 @@ if __name__ == '__main__':
     if args.training_iterations > 0:
         # other setup
         optimizer = getOptimizer(model.nn, **args.optimizer)
+        scheduler = getScheduler(optimizer, **args.scheduler)
 
         model.nn.eval()
         if args.evaluate_training:
@@ -170,6 +172,10 @@ if __name__ == '__main__':
                     bestParams = copy.deepcopy(model.nn.state_dict())
                     validationBest = validationErrorMean
                     validationFails = 0
+
+            # increment the scheduler
+            if scheduler is not None:
+                scheduler.step()
 
         # restore best model
         endTime = perf_counter()
