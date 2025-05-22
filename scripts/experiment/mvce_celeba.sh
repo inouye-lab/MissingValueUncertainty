@@ -21,15 +21,15 @@ conda activate ./venv
 
 python mvce_dataset.py celeba --output ./results/mvce-25/$feature/$mask/ \
     --dataset '{
-      "path": "/local/scratch/a/dburnet/datasets/CelebAMask/256/img",
+      "path": "../../datasets/CelebAMask/256/img",
       "lists_root": "datasets/celeba",
-      "attributes_path": "/local/scratch/a/dburnet/datasets/CelebAMask/1024/CelebAMask-HQ-attribute-anno.txt",
+      "attributes_path": "../../datasets/CelebAMask/1024/CelebAMask-HQ-attribute-anno.txt",
       "return_index": true,
       "targets": ["'$feature'"]
     }' \
-    --classifier "/local/scratch/a/dburnet/research/MissingValueUncertainty/models/celeba/$feature/celeba-$model.pklz" \
+    --classifier "./models/celeba/$feature/celeba-$model.pklz" \
     --cuda_index $cuda --mask $mask $calibration \
-    --cache_directory "/local/scratch/a/dburnet/datasets/CelebAMask/cache/256/${mask}_test" \
+    --cache_directory "../../datasets/CelebAMask/cache/256/${mask}_test" \
     --generator_samples 3 30 \
     --beta_variance_scales 0.99 --zero_imputation --batch_mean_imputation 1 \
     --action_spaces zero-one \

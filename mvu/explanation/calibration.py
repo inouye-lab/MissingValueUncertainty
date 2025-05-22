@@ -77,13 +77,7 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
                 logging.warn(f"Skipping samples at indices {sampleIndices[~supportedIndices]}, unsupported by decision maker")
 
             # skip the batch if it has no processable samples
-            # # NEW LINES #
-            # # debug which samples are skipped
-            # logging.warning(
-            #     f"Skipping samples at indices {sampleIndices[~supportedIndices]}, unsupported by decision maker")
-            # # END NEW #
             if torch.count_nonzero(supportedIndices) == 0:
-                # TODO: log a warning here for any skipped samples
                 continue
             sampleIndices = sampleIndices[supportedIndices]
         else:
@@ -279,8 +273,6 @@ class CalibrationExperiment:
     """Name of the missing region"""
     actionName: str
     """Name of the action space"""
-    scale: float
-    """The calibration constant being tested for this experiment"""
     trials: int
     """Number of times to compute the MVCE, for the sake of error bars"""
     time: Optional[float]
@@ -291,7 +283,6 @@ class CalibrationExperiment:
     """Consistency results for this experiment, size is equal to trials"""
 
     def __init__(self, cleanLoader: DataLoader, maskName: str, mutatedLoader: DataLoader, decisionMaker: DecisionMaker,
-                 scale: float,
                  actionName: str, lossFunction: callable, actions: Tensor, buckets: int, trials: int,
                  classifier: Regressor = None, rand: Generator = None, device: Optional[torch.device] = None):
         self.cleanLoader = cleanLoader
@@ -302,7 +293,6 @@ class CalibrationExperiment:
         self.actionName = actionName
         self.lossFunction = lossFunction
         self.actions = actions
-        self.scale = scale
 
         self.buckets = buckets
         self.classifier = classifier
@@ -369,7 +359,7 @@ class CalibrationExperiment:
             logging.error(f"Skipping including {self.experimentName} in result CSV as it did not complete.")
 
         csvFile.writerow([
-            self.decisionMaker.name, self.actionName, self.maskName, self.time, self.scale,
+            self.decisionMaker.name, self.actionName, self.maskName, self.time, self.decisionMaker.scale,
             self.results.mean().item(), self.results.std().item(),
             self.consistencies.mean().item(), self.consistencies.std().item(),
             *[result.item() for result in self.results],

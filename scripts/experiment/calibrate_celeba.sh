@@ -17,13 +17,13 @@ conda activate ./venv
 
 python calibrate_dataset.py celeba --output ./results/calibration/$feature/$mask/ \
     --dataset '{
-      "path": "/local/scratch/a/dburnet/datasets/CelebAMask/256/img",
+      "path": "../../datasets/CelebAMask/256/img",
       "lists_root": "datasets/celeba",
-      "attributes_path": "/local/scratch/a/dburnet/datasets/CelebAMask/1024/CelebAMask-HQ-attribute-anno.txt",
+      "attributes_path": "../../datasets/CelebAMask/1024/CelebAMask-HQ-attribute-anno.txt",
       "return_index": true,
       "targets": ["'$feature'"]
     }' \
-    --classifier "/local/scratch/a/dburnet/research/MissingValueUncertainty/models/celeba/$feature/celeba-$model.pklz" \
+    --classifier "./models/celeba/$feature/celeba-$model.pklz" \
     --cuda_index $cuda --mask $mask --calibration_scales 0.1 0.25 0.5 0.75 1 2.5 5 7.5 10 \
     --cache_directory "/local/scratch/a/sganguli/256/${mask}_validation" \
     --generator_samples 3 30 \

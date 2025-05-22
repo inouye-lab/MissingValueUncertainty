@@ -117,7 +117,6 @@ class CachingBatchGenerator(BatchGenerator):
         :return:   True if the index is already cached
         """
         return os.path.exists(os.path.join(self.cachePath, f"{index}.pklz"))
-        #return True
 
     @override
     def supportsIndices(self, indices: Tensor) -> Tensor:

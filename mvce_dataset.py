@@ -63,8 +63,6 @@ if __name__ == '__main__':
                         help="If true, includes zero variance.")
     parser.add_argument("--beta_variance_scales", type=float, nargs='*', default=[],
                         help="Scales of the beta variance to try for basic imputation.")
-    parser.add_argument("--calibration_scales", type=float, nargs='*', default=[],
-                        help="Scales of the beta variance to try for basic imputation.")
 
     # action space
     parser.add_argument("--action_spaces", nargs='*', type=jsonOrName,
@@ -111,14 +109,13 @@ if __name__ == '__main__':
         assert isinstance(ds.test, CelebADataset)
         classifier.setFeatureIndex(ds.test.attributes.originalNames.index(args.classifier_feature))
 
+    # determine calibration
     method_to_scale = {}
     if args.calibration_map:
         df_method_scale = pd.read_csv(args.calibration_map)
         df_method_scale['Scale'] = pd.to_numeric(df_method_scale['Scale'], errors='coerce')
         method_to_scale = dict(zip(df_method_scale['Method'], df_method_scale['Scale']))
-
-    # print(method_to_scale)
-    # sys.exit()
+        logging.info(f"Found calibration map at {args.calibration_map}: {method_to_scale}")
 
     # determine mask
     mask: Optional[Tensor] = None
@@ -228,8 +225,7 @@ if __name__ == '__main__':
                 decisionMaker=decisionMaker,
                 actionName=actionParams['name'], lossFunction=lossFunction, actions=actions,
                 buckets=args.buckets, trials=args.trials,
-                classifier=classifier, device=device,
-                scale=decisionMaker.scale
+                classifier=classifier, device=device
             ))
 
     # get the work started
