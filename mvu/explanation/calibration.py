@@ -411,8 +411,7 @@ class CalibrationScaleExperiment:
     @property
     def experimentName(self):
         """Name of the overall experiment"""
-        #return f"{self.decisionMaker.name} missing {self.maskName} in {self.actionName}"
-        return f"{self.decisionMaker.name} missing {self.maskName}"
+        return f"{self.decisionMaker.name} missing {self.maskName} at scale {self.decisionMaker.scale}"
 
     def __call__(self, *args, **kwargs):
         logging.info(f"Started running {self.experimentName}")
