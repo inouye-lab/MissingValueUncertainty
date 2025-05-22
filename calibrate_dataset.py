@@ -182,9 +182,9 @@ if __name__ == '__main__':
 
     # setup datasets
     # if we have any methods beyond the Dirichlet, then use nan for the missing value. 0 is faster but isn't what most methods support
-    dsMissing = SpecificFeatureRemovingDataset(ds.test, mask, includeMask=includeMask, missingValue=torch.nan if len(methods) > 0 else 0)
+    dsMissing = SpecificFeatureRemovingDataset(ds.validate, mask, includeMask=includeMask, missingValue=torch.nan if len(methods) > 0 else 0)
 
-    loaderClean = DataLoader(ds.test, batch_size=args.batch_size, pin_memory=True)
+    loaderClean = DataLoader(ds.validate, batch_size=args.batch_size, pin_memory=True)
     loaderMissing = DataLoader(dsMissing, batch_size=args.batch_size, pin_memory=True)
 
     # finally, build experiment list
@@ -220,7 +220,7 @@ if __name__ == '__main__':
         csvWriter = csv.writer(csvFile)
 
         # write headers
-        CalibrationExperiment.writeResultHeaders(csvWriter, args.trials)
+        CalibrationScaleExperiment.writeResultHeaders(csvWriter, args.trials)
         # write rows
         for experiment in experiments:
             experiment.writeResults(csvWriter)

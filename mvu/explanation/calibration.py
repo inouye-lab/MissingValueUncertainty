@@ -67,11 +67,11 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
             # ensure that all samples in this batch can be processed, lets us skip non-cached images when using a cache
             supportedIndices = decisionMaker.supportsIndices(sampleIndices)
             # skip the batch if it has no processable samples
-            # NEW LINES #
-            # debug which samples are skipped
-            logging.warning(
-                f"Skipping samples at indices {sampleIndices[~supportedIndices]}, unsupported by decision maker")
-            # END NEW #
+            # # NEW LINES #
+            # # debug which samples are skipped
+            # logging.warning(
+            #     f"Skipping samples at indices {sampleIndices[~supportedIndices]}, unsupported by decision maker")
+            # # END NEW #
             if torch.count_nonzero(supportedIndices) == 0:
                 continue
             sampleIndices = sampleIndices[supportedIndices]
@@ -174,6 +174,8 @@ class CalibrationExperiment:
     """Name of the missing region"""
     actionName: str
     """Name of the action space"""
+    scale: float
+    """The calibration constant being tested for this experiment"""
     trials: int
     """Number of times to compute the MVCE, for the sake of error bars"""
     time: Optional[float]
@@ -182,6 +184,7 @@ class CalibrationExperiment:
     """MVCE results for this experiment, size is equal to trials"""
 
     def __init__(self, cleanLoader: DataLoader, maskName: str, mutatedLoader: DataLoader, decisionMaker: DecisionMaker,
+                 scale: float,
                  actionName: str, lossFunction: callable, actions: Tensor, buckets: int, trials: int,
                  classifier: Regressor = None, rand: Generator = None, device: Optional[torch.device] = None):
         self.cleanLoader = cleanLoader
@@ -192,6 +195,7 @@ class CalibrationExperiment:
         self.actionName = actionName
         self.lossFunction = lossFunction
         self.actions = actions
+        self.scale = scale
 
         self.buckets = buckets
         self.classifier = classifier
@@ -239,7 +243,7 @@ class CalibrationExperiment:
         :param trials:   Number of trial headers to include
         """
         csvFile.writerow([
-            "Method", "Action Space", "Mask", "Time",
+            "Method", "Action Space", "Mask", "Time", "Scale",
             "MVCE Mean", "MVCE Std",
             *[f"Trial {i+1}" for i in range(trials)]
         ])
@@ -253,7 +257,7 @@ class CalibrationExperiment:
             logging.error(f"Skipping including {self.experimentName} in result CSV as it did not complete.")
 
         csvFile.writerow([
-            self.decisionMaker.name, self.actionName, self.maskName, self.time,
+            self.decisionMaker.name, self.actionName, self.maskName, self.time, self.scale,
             self.results.mean().item(), self.results.std().item(),
             *[result.item() for result in self.results]
         ])

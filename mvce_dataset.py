@@ -3,9 +3,11 @@ import csv
 import json
 import logging
 import os
+import pandas as pd
 from typing import List, Optional
 
 import torch
+import sys
 from torch import nn
 from torch.utils.data import DataLoader
 
@@ -39,6 +41,8 @@ if __name__ == '__main__':
     parser.add_argument("--classifier", type=str, help='Path to the pretrained regressor to load')
     parser.add_argument("--classifier_feature", type=str, default=None,
                         help='Feature index from the regressor to use, if -1 uses all features')
+    parser.add_argument("--calibration_map", type=str, default="",
+                        help='Location of the calibration data')
 
     # experiment parameters
     parser.add_argument("--threads", type=int, default=-1, help='Number of worker threads to run')
@@ -55,6 +59,8 @@ if __name__ == '__main__':
     parser.add_argument("--zero_variance", action='store_true',
                         help="If true, includes zero variance.")
     parser.add_argument("--beta_variance_scales", type=float, nargs='*', default=[],
+                        help="Scales of the beta variance to try for basic imputation.")
+    parser.add_argument("--calibration_scales", type=float, nargs='*', default=[],
                         help="Scales of the beta variance to try for basic imputation.")
 
     # action space
@@ -102,6 +108,15 @@ if __name__ == '__main__':
     if args.classifier_feature is not None:
         classifier.setFeatureIndex(ds.test.attributes.originalNames.index(args.classifier_feature))
 
+    method_to_scale = {}
+    if args.calibration_map:
+        df_method_scale = pd.read_csv(args.calibration_map)
+        df_method_scale['Scale'] = pd.to_numeric(df_method_scale['Scale'], errors='coerce')
+        method_to_scale = dict(zip(df_method_scale['Method'], df_method_scale['Scale']))
+
+    # print(method_to_scale)
+    # sys.exit()
+
     # determine mask
     logging.info("Loading mask " + args.mask["name"])
     mask = createMask(ds.metadata, **args.mask)
@@ -115,7 +130,7 @@ if __name__ == '__main__':
         if isinstance(classifier.nn, Resnet18Dirichlet):
             logging.info(f"Including Dirichlet decision maker")
             classifier.activation = None
-            decisionMakers.append(DirichletDecisionMaker(classifier, args.decision_samples))
+            decisionMakers.append(DirichletDecisionMaker(classifier, args.decision_samples, scale=method_to_scale["Dirichlet Network"] if method_to_scale else 1))
             includeMask = IncludeMask.MISSING
             # substitute the classifier for the remaining methods with one that convert to mean
             classifier = DirichletClassifier.fromRegressor(classifier, num_classes=len(ds.metadata.labels))
@@ -167,10 +182,10 @@ if __name__ == '__main__':
         logging.info(f"Adding {len(methods)} methods with discarded masks.")
         # if we have a mask, strip it from all methods
         maskKeep = torch.arange(0, 3, device=device)
-        decisionMakers.extend(MethodOfMomentsDecisionMaker(DiscardingMaskMethod(method, maskKeep), args.decision_samples) for method in methods)
+        decisionMakers.extend(MethodOfMomentsDecisionMaker(DiscardingMaskMethod(method, maskKeep), args.decision_samples, scale=method_to_scale[method.name] if method_to_scale else 1) for method in methods)
     else:
         logging.info(f"Adding {len(methods)} methods.")
-        decisionMakers.extend(MethodOfMomentsDecisionMaker(method, args.decision_samples) for method in methods)
+        decisionMakers.extend(MethodOfMomentsDecisionMaker(method, args.decision_samples, scale=method_to_scale[method.name] if method_to_scale else 1) for method in methods)
 
     # setup datasets
     # if we have any methods beyond the Dirichlet, then use nan for the missing value. 0 is faster but isn't what most methods support
@@ -190,7 +205,8 @@ if __name__ == '__main__':
                 decisionMaker=decisionMaker,
                 actionName=actionParams['name'], lossFunction=lossFunction, actions=actions,
                 buckets=args.buckets, trials=args.trials,
-                classifier=classifier, device=device
+                classifier=classifier, device=device,
+                scale=decisionMaker.scale
             ))
 
     # get the work started

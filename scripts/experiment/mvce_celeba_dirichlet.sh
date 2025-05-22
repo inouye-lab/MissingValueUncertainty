@@ -28,7 +28,7 @@ shift 4
 source ../../miniconda/bin/activate
 conda activate ./venv
 
-python calibrate_dataset_test.py celeba --output ./results/mvce-25/$feature/$mask/ \
+python mvce_dataset.py celeba --output ./results/mvce-25/$feature/$mask/ \
     --dataset '{
       "path": "/local/scratch/a/dburnet/datasets/CelebAMask/256/img",
       "lists_root": "datasets/celeba",
