@@ -8,10 +8,10 @@ fi
 
 feature=$1
 model=$2
-cuda=${3:-0}
-if [ $# -ge 3 ]; then
-  shift
-fi
+cuda=$3
+activation=$4
+shift
+shift
 shift
 shift
 
@@ -19,11 +19,11 @@ source ../../miniconda/bin/activate
 conda activate ./venv
 
 python learn_dirichlet_network.py celeba --seed 1337 --output ./models/dirichlet-celeba/$feature/ \
-    --validate_every 10 --training_iterations 1000 --batch_size 250 --patience 5 --evaluate_training \
+    --validate_every 10 --training_iterations 1000 --batch_size 50 --patience 5 --evaluate_training \
     --cuda_index $cuda --teacher ./models/celeba/$feature/celeba-$model.pklz \
     --clean_weight 0 --masked_weight 0 --dirichlet_weight 1 \
     --masks "top" "bottom" "full" "none" \
-    --architecture '{"name": "resnet_dirichlet", "momentum": 0.01, "track_running_stats": false}' \
+    --architecture '{"name": "resnet_dirichlet", "activation": "'$activation'"}' \
     '{
       "path": "../../datasets/CelebAMask/256/img",
       "lists_root": "datasets/celeba",

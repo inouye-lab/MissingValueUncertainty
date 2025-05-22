@@ -7,7 +7,6 @@ from time import perf_counter
 
 import torch
 from torch import Tensor, Generator
-from torch.optim import Adam
 from torch.utils.data import DataLoader
 
 from mvu.model.loss import createLoss
@@ -15,7 +14,7 @@ from mvu.dataset.loader import getDatasetSplits
 from mvu.logger import setupLogging
 from mvu.model.loader import createRegressorFromJson
 from mvu.model.regressor import NeuralNetworkRegressor
-from mvu.util import jsonOrString, selectDevice
+from mvu.util import jsonOrString, selectDevice, getOptimizer, jsonOrName, getScheduler
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -30,7 +29,6 @@ if __name__ == '__main__':
                         help="Index to use for CUDA, set to -1 to force CPU")
 
     # training
-    parser.add_argument('--learning_rate', type=float, default=0.0001, help='Learning rate for Adam')
     parser.add_argument('--training_iterations', type=int, default=200,
                         help='Maximum training iterations, may train for less if the model stops improving')
     parser.add_argument('--batch_size', type=int, default=10, help='Batch size during training')
@@ -43,6 +41,10 @@ if __name__ == '__main__':
     parser.add_argument("--evaluate_training", action='store_true',
                         help="If set, training accuracy is logged during validation. Useful for debugging patience.")
     parser.add_argument("--loss", type=str, default=None, help='Loss function to employ')
+
+    # optimizer
+    parser.add_argument("--optimizer", type=jsonOrName, default=dict(), help='Optimizer choice')
+    parser.add_argument("--scheduler", type=jsonOrName, default=dict(), help='Scheduler configuration')
 
     # model parameters
     parser.add_argument("--input", type=str, default=None, help='Input model to continue training')
@@ -83,9 +85,6 @@ if __name__ == '__main__':
 
     logging.info(f"Network has {sum(p.numel() for p in model.nn.parameters() if p.requires_grad)} parameters")
 
-    # other setup
-    lossFunction = createLoss(args.loss, args.classification)
-    optimizer = Adam(model.nn.parameters(), lr=args.learning_rate)
 
     # device setup
     device = selectDevice(args.cuda_index)
@@ -98,95 +97,105 @@ if __name__ == '__main__':
     testLoader = DataLoader(ds.test, batch_size=args.batch_size, shuffle=False, generator=rand)
 
     # evaluate the initial model
-    model.nn.eval()
-    if args.evaluate_training:
-        trainingAccuracy = model.evaluateDataloader(dataLoader, device, lossFunction)
-        logging.info(f"Initial training error {trainingAccuracy.mean().item()}")
+    lossFunction = createLoss(args.loss, args.classification)
+    if args.training_iterations > 0:
+        # other setup
+        optimizer = getOptimizer(model.nn, **args.optimizer)
+        scheduler = getScheduler(optimizer, **args.scheduler)
 
-    validationError = model.evaluateDataloader(validateLoader, device, lossFunction)
-    validationBest = validationError.mean().item()
-    logging.info(f"Initial validation error {validationError.mean().item()}")
+        model.nn.eval()
+        if args.evaluate_training:
+            trainingAccuracy = model.evaluateDataloader(dataLoader, device, lossFunction)
+            logging.info(f"Initial training error {trainingAccuracy.mean().item()}")
 
-    # start training
-    logging.info("Starting network learning")
-    startTime = perf_counter()
-    bestParams = copy.deepcopy(model.nn.state_dict())
-    validationFails = 0
+        validationError = model.evaluateDataloader(validateLoader, device, lossFunction)
+        validationBest = validationError.mean().item()
+        logging.info(f"Initial validation error {validationError.mean().item()}")
 
-    numBatches = len(dataLoader)
-    for i in range(args.training_iterations):
-        iterationStart = perf_counter()
-        model.nn.train()
+        # start training
+        logging.info("Starting network learning")
+        startTime = perf_counter()
+        bestParams = copy.deepcopy(model.nn.state_dict())
+        validationFails = 0
 
-        # standard training stuff
-        totalLoss = 0
-        for batchIndex, (features, targets) in enumerate(dataLoader):
-            features = features.to(device)
-            targets = targets.to(device)
+        numBatches = len(dataLoader)
+        for i in range(args.training_iterations):
+            iterationStart = perf_counter()
+            model.nn.train()
 
-            optimizer.zero_grad()
+            # standard training stuff
+            totalLoss = 0
+            for batchIndex, (features, targets) in enumerate(dataLoader):
+                features = features.to(device)
+                targets = targets.to(device)
 
-            prediction = model.predictWithGradient(features)
-            loss: Tensor = lossFunction(prediction, targets)
-            loss.backward()
-            optimizer.step()
+                optimizer.zero_grad()
 
-            totalLoss += loss.item()
-            print(f"Evaluating iteration {i + 1}/{args.training_iterations} for batch {batchIndex + 1}/{numBatches}",
-                  end="\r")
+                prediction = model.predictWithGradient(features)
+                loss: Tensor = lossFunction(prediction, targets)
+                loss.backward()
+                optimizer.step()
 
-        logging.info(f"{args.name} iteration {i + 1}/{args.training_iterations} in "
-                     f"{perf_counter() - iterationStart:.5f} seconds - error: {totalLoss / numBatches}")
+                totalLoss += loss.item()
+                print(f"Evaluating iteration {i + 1}/{args.training_iterations} for batch {batchIndex + 1}/{numBatches}",
+                      end="\r")
 
-        # if this is the new best model, store it
-        if i % args.validate_every == 0 or (i+1) == numBatches:
-            logging.info(f"Evaluating the model via validation data")
-            model.nn.eval()
+            logging.info(f"{args.name} iteration {i + 1}/{args.training_iterations} in "
+                         f"{perf_counter() - iterationStart:.5f} seconds - error: {totalLoss / numBatches}")
 
-            # save a copy of the model so far
-            outputPath = os.path.join(outputFolder, f"{args.name}-{date}-{i+1}.pklz")
-            logging.info(f"Saving model at iteration {i+1} to {outputPath}")
-            model.save(outputPath)
+            # if this is the new best model, store it
+            if i % args.validate_every == 0 or (i+1) == numBatches:
+                logging.info(f"Evaluating the model via validation data")
+                model.nn.eval()
 
-            if args.evaluate_training:
-                trainingAccuracy = model.evaluateDataloader(dataLoader, device, lossFunction)
-                logging.info(f"Training error in evaluate mode {trainingAccuracy.mean().item()}")
+                # save a copy of the model so far
+                outputPath = os.path.join(outputFolder, f"{args.name}-{date}-{i+1}.pklz")
+                logging.info(f"Saving model at iteration {i+1} to {outputPath}")
+                model.save(outputPath)
 
-            # FIXME: there is probably a better way to compare multiple variables
-            validationError = model.evaluateDataloader(validateLoader, device, lossFunction)
-            validationErrorMean = validationError.mean().item()
-            if validationErrorMean > validationBest:
-                logging.info(f"Worsening on valid {validationErrorMean} > prev best {validationBest}")
-                if validationFails >= args.patience:
-                    logging.info(f"Exceeding patience {args.patience}, stopping training")
-                    break
+                if args.evaluate_training:
+                    trainingAccuracy = model.evaluateDataloader(dataLoader, device, lossFunction)
+                    logging.info(f"Training error in evaluate mode {trainingAccuracy.mean().item()}")
+
+                # FIXME: there is probably a better way to compare multiple variables
+                validationError = model.evaluateDataloader(validateLoader, device, lossFunction)
+                validationErrorMean = validationError.mean().item()
+                if validationErrorMean > validationBest:
+                    logging.info(f"Worsening on valid {validationErrorMean} > prev best {validationBest}")
+                    if validationFails >= args.patience:
+                        logging.info(f"Exceeding patience {args.patience}, stopping training")
+                        break
+                    else:
+                        validationFails += 1
                 else:
-                    validationFails += 1
-            else:
-                logging.info(f'Found new best model with error {validationErrorMean} < prev best {validationBest}')
-                bestParams = copy.deepcopy(model.nn.state_dict())
-                validationBest = validationErrorMean
-                validationFails = 0
+                    logging.info(f'Found new best model with error {validationErrorMean} < prev best {validationBest}')
+                    bestParams = copy.deepcopy(model.nn.state_dict())
+                    validationBest = validationErrorMean
+                    validationFails = 0
 
-    # restore best model
-    endTime = perf_counter()
-    logging.info(f"Network learning done in {endTime - startTime:.5f} secs")
-    model.nn.load_state_dict(bestParams)
+            # increment the scheduler
+            if scheduler is not None:
+                scheduler.step()
 
-    # TODO: error history graph?
-    """
-    # save training performances
-    perf_path = os.path.join(hist_dir, f'{str(percent * 100)}.train-hist')
-    np.save(perf_path, train_history)
-    logging.info(f'Training history saved to {perf_path}')
+        # restore best model
+        endTime = perf_counter()
+        logging.info(f"Network learning done in {endTime - startTime:.5f} secs")
+        model.nn.load_state_dict(bestParams)
 
-    #
-    # and plot it
-    perf_path = os.path.join(hist_dir, f'{str(percent * 100)}.train-hist.pdf')
-    plt.plot(np.arange(len(train_history)), train_history)
-    plt.savefig(perf_path)
-    plt.close()
-    """
+        # TODO: error history graph?
+        """
+        # save training performances
+        perf_path = os.path.join(hist_dir, f'{str(percent * 100)}.train-hist')
+        np.save(perf_path, train_history)
+        logging.info(f'Training history saved to {perf_path}')
+    
+        #
+        # and plot it
+        perf_path = os.path.join(hist_dir, f'{str(percent * 100)}.train-hist.pdf')
+        plt.plot(np.arange(len(train_history)), train_history)
+        plt.savefig(perf_path)
+        plt.close()
+        """
 
     # save the model
     # start by resetting some properties, not sure if this is needed, but it feels safer before saving the model

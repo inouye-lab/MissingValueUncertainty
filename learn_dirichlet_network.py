@@ -4,14 +4,14 @@ import json
 import logging
 import os
 from time import perf_counter
+from typing import List
 
 import torch
 from torch import Tensor, Generator, nn
 from torch.nn import Identity
-from torch.optim import Adam
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 
-from mvu.dataset.mutators import IncludeMask
+from mvu.dataset.mutators import IncludeMask, randomDropping
 from mvu.dataset.loader import getDatasetSplits
 from mvu.dataset.mutators import createMask, RandomMaskedDataset, distributeMasks
 from mvu.logger import setupLogging
@@ -19,7 +19,7 @@ from mvu.model.loader import createRegressorFromJson
 from mvu.model.loss import DirichletLoss, DirichletStrengthLogitLoss
 from mvu.model.regressor import NeuralNetworkRegressor, Regressor
 from mvu.model.specialized.resnet import Resnet18DirichletStrength
-from mvu.util import jsonOrString, selectDevice, jsonOrName
+from mvu.util import jsonOrString, selectDevice, jsonOrName, getOptimizer, getScheduler
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -27,15 +27,17 @@ if __name__ == '__main__':
     # Basic
     parser.add_argument("name", type=str, help='Name of the dataset to parse')
     parser.add_argument("dataset", type=json.loads, default=dict(), help='Parameters to load the dataset')
-    parser.add_argument("--masks", type=jsonOrName, nargs="*", help="Name of the masks to use")
     parser.add_argument("--output", type=str, default="./models/nn/", help='Location to save final regressor')
     parser.add_argument('--seed', type=int, default=1337, help='Seed for random permutations')
     parser.add_argument('-v', '--verbose', type=int, nargs='?', default=1, help='Logging verbosity level')
     parser.add_argument("--cuda_index", type=int, default=0,
                         help="Index to use for CUDA, set to -1 to force CPU")
 
+    # missing features
+    parser.add_argument("--masks", type=jsonOrName, nargs="*", default=[], help="Name of the masks to use")
+    parser.add_argument("--drop", type=jsonOrName, default=dict(), help="Parameters for dropping for the dataset")
+
     # training
-    parser.add_argument('--learning_rate', type=float, default=0.0001, help='Learning rate for Adam')
     parser.add_argument('--training_iterations', type=int, default=200,
                         help='Maximum training iterations, may train for less if the model stops improving')
     parser.add_argument('--batch_size', type=int, default=10, help='Batch size during training')
@@ -46,6 +48,10 @@ if __name__ == '__main__':
     parser.add_argument("--evaluate_training", action='store_true',
                         help="If set, training accuracy is logged during validation. Useful for debugging patience.")
     parser.add_argument("--teacher", type=str, default=None, help='Path to the pretrained regressor to load')
+
+    # optimizer
+    parser.add_argument("--optimizer", type=jsonOrName, default="adam", help='Optimizer choice')
+    parser.add_argument("--scheduler", type=jsonOrName, default=dict(), help='Scheduler configuration')
 
     # loss function config
     parser.add_argument('--masked_weight', type=float, default=0.5,
@@ -98,7 +104,10 @@ if __name__ == '__main__':
         teacher.to(device)
         teacher.nn.eval()
         # TODO: is there a way to not hardcode this?
-        teacher.activation = nn.Sigmoid()
+        if len(ds.metadata.labels) == 1:
+            teacher.activation = nn.Sigmoid()
+        else:
+            teacher.activation = nn.Softmax(dim=1)
     else:
         teacher = model
 
@@ -112,17 +121,29 @@ if __name__ == '__main__':
         lossFunction = DirichletLoss(args.masked_weight, args.dirichlet_weight, cleanWeight=args.clean_weight)
 
     # other setup
-    optimizer = Adam(model.nn.parameters(), lr=args.learning_rate)
-
+    optimizer = getOptimizer(model.nn, **args.optimizer)
+    scheduler = getScheduler(optimizer, **args.scheduler)
 
     # setup mutator
-    masks = [createMask(ds.metadata, **mask) for mask in args.masks]
+    maskedTraining: Dataset
+    maskedValidation: Dataset
     # when we have a teacher, don't give the teacher data with the mask
     includeMask = IncludeMask.ALWAYS if args.teacher is None else IncludeMask.MISSING
-    # for training, randomly choose mask
-    maskedTraining = RandomMaskedDataset(ds.train, masks, rand, missingValue=0, includeMask=includeMask, returnOriginal=True)
-    # for validation, split the set into parts using each mask
-    maskedValidation = distributeMasks(ds.validate, masks, rand, missingValue=0, includeMask=includeMask, returnOriginal=True)
+
+    commonMaskArgs = dict(missingValue=0, includeMask=includeMask, returnOriginal=True)
+
+    masks: List[Tensor] = []
+    if len(args.masks) > 0:
+        logging.info(f"Using masked missingness with {args.masks}")
+        masks = [createMask(ds.metadata, **mask) for mask in args.masks]
+        # for training, randomly choose mask
+        maskedTraining = RandomMaskedDataset(ds.train, masks, rand, **commonMaskArgs)
+        # for validation, split the set into parts using each mask
+        maskedValidation = distributeMasks(ds.validate, masks, rand, **commonMaskArgs)
+    else:
+        logging.info(f"Using randon dropping with arguments {args.drop}")
+        maskedTraining   = randomDropping(ds.train,    ds.metadata, **commonMaskArgs, **args.drop)
+        maskedValidation = randomDropping(ds.validate, ds.metadata, **commonMaskArgs, **args.drop)
 
     # setup data loading
     trainLoader    = DataLoader(maskedTraining,   batch_size=args.batch_size, shuffle=True,  generator=rand, pin_memory=True)
@@ -215,6 +236,10 @@ if __name__ == '__main__':
                 validationBest = validationErrorMean
                 validationFails = 0
 
+        # increment the scheduler
+        if scheduler is not None:
+            scheduler.step()
+
     # restore best model
     endTime = perf_counter()
     logging.info(f"Network learning done in {endTime - startTime:.5f} secs")
@@ -231,8 +256,11 @@ if __name__ == '__main__':
 
     # final evaluation of the model (done after saving as we don't need the result to save, and it might be slow)
     model.nn.to(device)
-    maskedTest = distributeMasks(ds.test, masks, rand, missingValue=0, returnOriginal=True,
-                                 includeMask=IncludeMask.ALWAYS if args.teacher is None else IncludeMask.MISSING)
+    if len(masks) > 0:
+        maskedTest = distributeMasks(ds.test, masks, rand, **commonMaskArgs)
+    else:
+        maskedTest = randomDropping(ds.test, ds.metadata, **commonMaskArgs, **args.drop)
+
     testLoader = DataLoader(maskedTest, batch_size=args.batch_size, shuffle=False, generator=rand, pin_memory=True)
     for (name, loader) in [("train", trainLoader), ("validate", validateLoader), ("test", testLoader)]:
         result = Regressor.evaluateData(loader, batchHandler)

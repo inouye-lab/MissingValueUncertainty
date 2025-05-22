@@ -21,7 +21,7 @@ class Resnet18Classifier(Module):
     """Final activation function"""
 
     def __init__(self, num_classes: int, momentum: float = None, track_running_stats: bool = None,
-                 pretrained_weights: bool = True, activation: str = "sigmoid"):
+                 pretrained_weights: bool = True, activation: str = "sigmoid", keep_final_layer: bool = False):
         """
         Creates a new instance of the classifier
         :param num_classes:            Number of output classes to use
@@ -42,7 +42,11 @@ class Resnet18Classifier(Module):
                     if track_running_stats is not None:
                         module.track_running_stats = track_running_stats
         self.numClasses = num_classes
-        self.resnet.fc = nn.Linear(self.resnet.fc.in_features, num_classes)
+        if keep_final_layer:
+            assert self.resnet.fc.out_features == self.numClasses,\
+                f"Cannot keep final layer if the class count differs; layer size {self.resnet.fc.out_features} for class count {self.numClasses}"
+        else:
+            self.resnet.fc = nn.Linear(self.resnet.fc.in_features, num_classes)
         if activation == "sigmoid":
             self.activation = nn.Sigmoid()
         elif activation == "identity":

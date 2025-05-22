@@ -1,6 +1,6 @@
 import logging
 from time import perf_counter
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Tuple
 
 import torch
 from torch import Tensor, Generator
@@ -22,7 +22,8 @@ def bestActionWithoutMissing(features: Tensor, classifier: Regressor, lossFuncti
 
 def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMaker: DecisionMaker,
                 lossFunction: Union[callable,List[callable]], actions: Tensor, buckets: int,
-                classifier: Regressor = None, rand: Generator = None, device: Optional[torch.device] = None) -> Tensor:
+                classifier: Regressor = None, rand: Generator = None, device: Optional[torch.device] = None,
+                avgConsistency: bool = False) -> Union[Tensor, Tuple[Tensor, Tensor]]:
     """
     Computes the missing value calibration error for the given decision maker.
     :param cleanLoader:     DataLoader for data with no missingness,
@@ -32,6 +33,7 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
     :param lossFunction:    Loss function for the action space. TODO: update why list
     :param actions:         Action space.
     :param buckets:         Number of buckets for computing the calibration error.
+    :param avgConsistency   If true, returns average consistency with MVCE
     :param classifier:      Classifier for predicting best actions without missingness.
                             If none, cleanLoader is assumed best actions.
     :param rand:            Random state.
@@ -47,6 +49,8 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
     predictedActionCount = torch.zeros_like(actions, dtype=torch.int)
     actionsLen = len(actions)
     aleatoricIndex = actionsLen - 1  # TODO: this is messy
+
+    consistentSamples = torch.zeros((1,), dtype=torch.int, device=device)
 
     isLossList = isinstance(lossFunction, List)
     for i, (cleanBatch, mutatedBatch) in enumerate(zip(cleanLoader, mutatedLoader)):
@@ -66,6 +70,12 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
             sampleIndices = mutatedBatch[2]
             # ensure that all samples in this batch can be processed, lets us skip non-cached images when using a cache
             supportedIndices = decisionMaker.supportsIndices(sampleIndices)
+
+            # debug which samples are skipped
+            # TODO: can we support integer tensors here?
+            if supportedIndices.dtype == torch.bool and torch.count_nonzero(~supportedIndices) != 0:
+                logging.warn(f"Skipping samples at indices {sampleIndices[~supportedIndices]}, unsupported by decision maker")
+
             # skip the batch if it has no processable samples
             # # NEW LINES #
             # # debug which samples are skipped
@@ -73,6 +83,7 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
             #     f"Skipping samples at indices {sampleIndices[~supportedIndices]}, unsupported by decision maker")
             # # END NEW #
             if torch.count_nonzero(supportedIndices) == 0:
+                # TODO: log a warning here for any skipped samples
                 continue
             sampleIndices = sampleIndices[supportedIndices]
         else:
@@ -116,6 +127,8 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
 
         # consistency metric: actions match best actions
         consistency = torch.eq(predActions, bestActions)
+        # track total consistency
+        consistentSamples += torch.sum(consistency)
 
         # map -1 to max+1 for aleatoric actions so we can count those
         bestActions[bestActions == -1] = aleatoricIndex
@@ -141,6 +154,7 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
 
     totalSamples = bucketSizes.sum()
     mvce = (bucketSizes * torch.abs(bucketConsistency - bucketConfidence)).sum() / totalSamples
+    consistency = consistentSamples / totalSamples
     time = perf_counter() - time
     logging.info(f"""
         Computed MVCE {mvce.cpu().item()} for {decisionMaker.name} in {time} seconds with {buckets} buckets:
@@ -151,10 +165,101 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
         * Actions: {actions.cpu()}
         * Best Action Counts: {bestActionCount.cpu()}
         * Prediction Action Counts: {predictedActionCount.cpu()}
+        * Average consistency: {consistency.cpu().item()}
     """)
 
     # compute final MVCE metric
+    if avgConsistency:
+        return mvce, consistency
     return mvce
+
+def computeECE(loader: DataLoader, classifier: Regressor, classCount: int, buckets: int,
+               device: Optional[torch.device] = None) -> Tuple[Tensor, Tensor]:
+    """
+    Computes the expected calibration error for the given classifier.
+    :param loader:          DataLoader for data with no missingness.
+    :param classifier:      Classifier to test.
+    :param buckets:         Number of buckets for computing the calibration error.
+    :param classCount:      Number of expected features
+    :param device:          Device to use for calculations
+    :return:  Computed expected calibration error and accuracy
+    """
+    time = perf_counter()
+    bucketSizes = torch.zeros((buckets,), dtype=torch.int, device=device)
+    bucketConfidence = torch.zeros((buckets,), dtype=torch.float, device=device)
+    bucketAccuracy = torch.zeros((buckets,), dtype=torch.float, device=device)
+
+    actionCount = classCount if classCount > 1 else 2
+    labelCount = torch.zeros((actionCount,), dtype=torch.int, device=device)
+    predictedCount = torch.zeros((actionCount,), dtype=torch.int, device=device)
+
+    accurateSamples = torch.zeros((1,), dtype=torch.int, device=device)
+
+    for i, (features, labels) in enumerate(loader):
+        features: Tensor
+        labels: Tensor = labels.squeeze()
+        if device is not None:
+            features = features.to(device)
+            labels = labels.to(device)
+        phi = classifier.predict(features).squeeze()
+
+        # if we only have 1 class, threshold to 0.5
+        prediction: Tensor
+        confidence: Tensor
+        if len(phi.shape) == 1 or phi.shape[1] == 1:
+            prediction = (phi >= 0.5).int()
+            confidence = (phi * prediction + (1 - phi) * (1 - prediction))
+        else:
+            max = phi.max(1)
+            confidence = max.values
+            prediction = max.indices
+
+        # map the confidence values to the bucket index
+        bucketIndices = (confidence * buckets).int()
+        # any confidence of 1.0 gets mapped to max bucket
+        bucketIndices[bucketIndices == buckets] = buckets - 1
+
+        # accuracy metric: predicted label matches actual
+        accuracy = torch.eq(prediction, labels)
+        # track total accuracy
+        accurateSamples += torch.sum(accuracy)
+
+        labelCount += labels.int().bincount(minlength=actionCount)
+        predictedCount += prediction.bincount(minlength=actionCount)
+
+        # bucketSizes = indices.bincount(minlength = buckets)
+        for bucket in range(buckets):
+            bucketMask = bucketIndices == bucket
+            bucketSize = torch.count_nonzero(bucketMask)
+            bucketSizes[bucket] += bucketSize
+            if bucketSize > 0:
+                bucketConfidence[bucket] += confidence[bucketMask].sum()
+                bucketAccuracy[bucket] += torch.count_nonzero(accuracy[bucketMask])
+
+    # up until now, bucketConfidence and bucketConsistency have been sums, need to divide by total size for prob
+    # need to be careful about divide by zero though, so skip empty buckets
+    nonZero = torch.ne(bucketSizes, 0)
+    bucketSizes = bucketSizes[nonZero]
+    bucketConfidence = bucketConfidence[nonZero] / bucketSizes
+    bucketAccuracy = bucketAccuracy[nonZero] / bucketSizes
+
+    totalSamples = bucketSizes.sum()
+    ece = (bucketSizes * torch.abs(bucketAccuracy - bucketConfidence)).sum() / totalSamples
+    accuracy = accurateSamples / totalSamples
+    time = perf_counter() - time
+    logging.info(f"""
+        Computed ECE {ece.cpu().item()} in {time} seconds with {buckets} buckets:
+        * Non-zero buckets: {torch.nonzero(nonZero).squeeze().cpu()}
+        * Final bucket sizes: {bucketSizes.cpu()} totaling {totalSamples.cpu().item()} samples
+        * Final bucket confidences: {bucketConfidence.cpu()}
+        * Final bucket accuracy: {bucketAccuracy.cpu()}
+        * Label counts: {labelCount.cpu()}
+        * Prediction Action Counts: {predictedCount.cpu()}
+        * Average accuracy: {accuracy.cpu().item()}
+    """)
+
+    # return final values
+    return ece, accuracy
 
 
 class CalibrationExperiment:
@@ -182,6 +287,8 @@ class CalibrationExperiment:
     """Duration of this experiment"""
     results: Tensor
     """MVCE results for this experiment, size is equal to trials"""
+    consistencies: Tensor
+    """Consistency results for this experiment, size is equal to trials"""
 
     def __init__(self, cleanLoader: DataLoader, maskName: str, mutatedLoader: DataLoader, decisionMaker: DecisionMaker,
                  scale: float,
@@ -215,12 +322,14 @@ class CalibrationExperiment:
 
         try:
             self.results = torch.empty((self.trials,), dtype=torch.float)
+            self.consistencies = torch.empty((self.trials,), dtype=torch.float)
             for i in range(self.trials):
-                self.results[i] = computeMVCE(
+                 mvce, consistency = computeMVCE(
                     self.cleanLoader, self.mutatedLoader, self.decisionMaker,
                     self.lossFunction, self.actions, self.buckets, self.classifier,
-                    self.rand, self.device
-                ).cpu()
+                    self.rand, self.device, avgConsistency=True)
+                 self.results[i] = mvce.cpu()
+                 self.consistencies[i] = consistency.cpu()
         except KeyboardInterrupt as e:
             # this is just logging the context so we know which experiment was terminated
             # its in the log again later and earlier, but this reduces some of the debug time
@@ -229,6 +338,7 @@ class CalibrationExperiment:
         except BaseException as e:
             handleException(type(e), e, e.__traceback__,
                             message=f"Failed to process {self.experimentName}")
+            return
 
         # store final experiment time
         endTime = perf_counter()
@@ -245,7 +355,9 @@ class CalibrationExperiment:
         csvFile.writerow([
             "Method", "Action Space", "Mask", "Time", "Scale",
             "MVCE Mean", "MVCE Std",
-            *[f"Trial {i+1}" for i in range(trials)]
+            "Consistency Mean", "Consistency Std",
+            *[f"Trial {i+1} MVCE" for i in range(trials)],
+            *[f"Trial {i+1} Consistency" for i in range(trials)]
         ])
 
     def writeResults(self, csvFile) -> None:
@@ -259,7 +371,9 @@ class CalibrationExperiment:
         csvFile.writerow([
             self.decisionMaker.name, self.actionName, self.maskName, self.time, self.scale,
             self.results.mean().item(), self.results.std().item(),
-            *[result.item() for result in self.results]
+            self.consistencies.mean().item(), self.consistencies.std().item(),
+            *[result.item() for result in self.results],
+            *[result.item() for result in self.consistencies]
         ])
 
 # post-hoc

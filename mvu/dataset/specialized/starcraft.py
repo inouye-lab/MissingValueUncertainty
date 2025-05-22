@@ -4,13 +4,13 @@ from typing import Tuple, List, Union, Dict
 
 import torch
 from overrides import override
-from sc2image import StarCraftImage, StarCraftCIFAR10
+from sc2image import StarCraftImage, StarCraftCIFAR10, StarCraftMNIST
 from torch import Tensor
-from torch.utils.data import Dataset, Subset
+from torch.utils.data import Dataset
 
+from mvu.dataset.specialized.baselines import getTransform
 from ..meta import ImageDatasetMeta
 from ..torch_utils import TorchDatasetSplits
-from torchvision.transforms.functional import to_tensor
 
 
 class StarCraftDataset(Dataset[Tuple[Tensor, Tensor]]):
@@ -47,26 +47,25 @@ class StarCraftDataset(Dataset[Tuple[Tensor, Tensor]]):
         return (unitValues.to(torch.float32) / 127.5) - 1, targets
 
 
-def createDataset(path: str, train: bool, image_format: str = 'bag-of-units-first', image_size: int = 64,
+def _createDataset(path: str, train: bool, transform: callable, image_format: str = 'bag-of-units-first', image_size: int = 64,
                   targets: Union[str, List[str]] = None) -> Dataset:
     if image_format == "cifar10":
-        assert image_size == 32, "StarCraft CIFAR10 requires image size of 32"
         assert targets is not None, "StartCraft CIFAR10 does not support targets"
         return StarCraftCIFAR10(
             root=path,
             train=train,
             download=True,
-            transform=lambda image: (to_tensor(image).to(torch.float32) * 2) - 1
+            transform=transform
         )
     else:
         # TODO: can directly use the original class likely
-        return StarCraftDataset(path, image_format, image_size, targets, train)
+        return StarCraftDataset(path, image_format, 64, targets, train)
 
 
 def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = None,
                            validation_percent: float = 0.3, samples: Dict[str,int] = None,
                            image_format: str = 'bag-of-units-first',
-                           image_size: int = 64, sensor_size: int = 1) -> TorchDatasetSplits:
+                           image_size: int = 64, sensor_size: int = 1, **kwargs) -> TorchDatasetSplits:
     """
     Creates the needed objects to use the starcraft dataset
     :param path:                Location to load the starcraft dataset into
@@ -76,6 +75,7 @@ def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = No
     :param image_format:        Format to use for the dataset, supports 'bag-of-units-first' and 'cifar10'
     :param image_size:          Size of the image in pixels
     :param sensor_size:         Size of sensors for making values missing
+    :param kwargs:              Additional image transform parameters
     :return:  Dataset instance
     """
     assert path is not None, "Must pass in a path to use the starcraft dataset"
@@ -84,41 +84,27 @@ def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = No
 
     # ensure targets is always a list
     if targets is None:
-        targets = []
+        if image_format == "cifar10":
+            targets = [f"{map} at {time}" for (map, time) in StarCraftMNIST.classes]
+        else:
+            targets = []
     elif isinstance(targets, str):
         targets = [targets]
+    elif image_format == "cifar10":
+        raise NotImplementedError("CIFAR10 does not currently support changing target list")
+
+    logging.info(f"Using {len(targets)} StarCraft targets: {targets}")
 
     # create metadata using
     # TODO: can we reasonably support other image formats? for now hardcoding to 'bag-of-units-first'
     meta = ImageDatasetMeta("starcraft", targets, image_size, sensor_size, 3)
 
+    # find transform
+    transformFunc = getTransform(image_size, 32 if image_format == "cifar10" else 64, **kwargs)
+
     # we only have train and test for starcraft, so split train into train and validation by percent
     # TODO: consider supporting seeded randomizing the split indices? prevent bias due to ordering in the set
-    trainingValidation = createDataset(path, True, image_format, image_size, targets)
-    testing = createDataset(path, False, image_format, image_size, targets)
+    trainingValidation = _createDataset(path, True, transformFunc, image_format, image_size, targets)
+    testing = _createDataset(path, False, transformFunc, image_format, image_size, targets)
 
-    # handle limits, for quicker testing
-    # no extra work if limits are not defined
-    trainingValidationSize = len(trainingValidation)
-    validationEnd = int(trainingValidationSize * validation_percent)
-    trainingStart = validationEnd
-    trainingEnd = trainingValidationSize
-    if samples is not None:
-        # training has a start offset and an end, so need some math to convert the limit
-        if "train" in samples:
-            trainLimit = samples["test"]
-            if trainLimit < trainingEnd - trainingStart:
-                trainingEnd = trainingStart + trainLimit
-        # validate is easy to limit, just reduce max samples
-        if "validate" in samples:
-            validationEnd = min(validationEnd, samples["validate"])
-        # only make test a subset if needed, can use the raw dataset otherwise
-        if "test" in samples:
-            testLimit = samples["test"]
-            if testLimit < len(testing):
-                testing = Subset(testing, range(0, testLimit))
-    # apply the computed limits
-    training = Subset(trainingValidation, range(trainingStart, trainingEnd))
-    validation = Subset(trainingValidation, range(0, validationEnd))
-
-    return TorchDatasetSplits(training, validation, testing, meta)
+    return TorchDatasetSplits.split(meta, trainingValidation, testing, validation_percent=validation_percent, samples=samples)

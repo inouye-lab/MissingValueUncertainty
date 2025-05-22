@@ -1,8 +1,9 @@
 import logging
-from typing import Dict, Union, Optional
 
+from mvu.dataset.specialized.baselines import createCIFAR10Dataset
 from .csv import CsvDatasetSplits
 from .specialized.celeba import createCelebADataset
+from .specialized.imagenet import createImageNetDataset
 from .specialized.starcraft import createStarCraftDataset
 from .torch_utils import TorchDatasetSplits
 
@@ -16,12 +17,18 @@ def getDatasetSplits(name: str, path: str = None, **kwargs) -> TorchDatasetSplit
     :return:  Dataset splits for experiments
     """
     # custom loading logic for certain datasets
+    if name == "cifar10":
+        logging.info(f"Loading CIFAR10 dataset from {path}")
+        return createCIFAR10Dataset(path=path, **kwargs)
     if name == "starcraft":
         logging.info(f"Loading StarCraft dataset from {path}")
         return createStarCraftDataset(path=path, **kwargs)
     if name == "celeba":
         logging.info(f"Loading CelebA dataset from {path}")
         return createCelebADataset(images_root=path, **kwargs)
+    if name == "imagenet":
+        logging.info(f"Loading ImageNet dataset from {path}")
+        return createImageNetDataset(path=path, **kwargs)
 
     # determine the path from the arguments
     if path is None:
