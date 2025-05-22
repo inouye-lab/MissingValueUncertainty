@@ -123,8 +123,8 @@ if __name__ == '__main__':
             decisionMakers.append(DirichletDecisionMaker(classifier, args.decision_samples))
             includeMask = IncludeMask.MISSING
             # substitute the classifier for the remaining methods with one that convert to mean
-            classifier = DirichletClassifier.fromRegressor(classifier, num_classes=len(ds.metadata.labels))
-        elif len(ds.metadata.labels) == 1:
+            classifier = DirichletClassifier.fromRegressor(classifier, num_classes=len(ds.metadata.target))
+        elif len(ds.metadata.target) == 1:
             logging.info(f"Setting classifier activation function to sigmoid for single class")
             classifier.activation = nn.Sigmoid()
         else:
