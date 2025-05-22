@@ -15,7 +15,7 @@ from mvu.dataset.loader import getDatasetSplits
 from mvu.dataset.mutators import SpecificFeatureRemovingDataset, createMask, IncludeMask, randomDropping
 from mvu.dataset.specialized.celeba import CelebADataset
 from mvu.explanation.actions import createActionSpace
-from mvu.explanation.calibration import CalibrationExperiment
+from mvu.explanation.calibration import MVCEExperiment
 from mvu.explanation.decision import DecisionMaker
 from mvu.explanation.dirichlet import DirichletDecisionMaker, DirichletClassifier
 from mvu.explanation.moments import MethodOfMomentsDecisionMaker
@@ -214,13 +214,13 @@ if __name__ == '__main__':
     loaderMissing = DataLoader(dsMissing, batch_size=args.batch_size, pin_memory=True)
 
     # finally, build experiment list
-    experiments: List[CalibrationExperiment] = []
+    experiments: List[MVCEExperiment] = []
     numClasses = 1 if args.classifier_feature is not None else len(ds.metadata.target)
     for actionParams in args.action_spaces:
         logging.info(f"Considering action space {actionParams['name']}")
         lossFunction, actions = createActionSpace(size=numClasses, device=device, **actionParams)
         for decisionMaker in decisionMakers:
-            experiments.append(CalibrationExperiment(
+            experiments.append(MVCEExperiment(
                 loaderClean, maskName, loaderMissing,
                 decisionMaker=decisionMaker,
                 actionName=actionParams['name'], lossFunction=lossFunction, actions=actions,
@@ -242,7 +242,7 @@ if __name__ == '__main__':
         csvWriter = csv.writer(csvFile)
 
         # write headers
-        CalibrationExperiment.writeResultHeaders(csvWriter, args.trials)
+        MVCEExperiment.writeResultHeaders(csvWriter, args.trials)
         # write rows
         for experiment in experiments:
             experiment.writeResults(csvWriter)

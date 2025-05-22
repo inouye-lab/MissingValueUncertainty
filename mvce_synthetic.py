@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from mvu.dataset.csv import import_from_csv
 from mvu.dataset.mutators import SpecificFeatureRemovingDataset
 from mvu.explanation.actions import createActionSpace
-from mvu.explanation.calibration import CalibrationExperiment
+from mvu.explanation.calibration import MVCEExperiment
 from mvu.explanation.moments import MethodOfMomentsDecisionMaker
 from mvu.logger import setupLogging
 from mvu.model.distribution import GaussianParameters, ConditionalGaussianDistribution
@@ -195,7 +195,7 @@ if __name__ == '__main__':
     decisionMakers = [MethodOfMomentsDecisionMaker(method, args.decision_samples) for method in methods]
 
     # finally, build experiment list
-    experiments: List[CalibrationExperiment] = []
+    experiments: List[MVCEExperiment] = []
     for actionParams in args.action_spaces:
         logging.info(f"Considering action space {actionParams['name']}")
         lossFunction, actions = createActionSpace(size=1, device=device, **actionParams)
@@ -206,8 +206,8 @@ if __name__ == '__main__':
                 buckets=args.buckets, trials=args.trials,
                 classifier=classifier, device=device
             )
-            experiments.append(CalibrationExperiment(loaderClean, "Missing X1", loaderX1Missing, **common))
-            experiments.append(CalibrationExperiment(loaderClean, "Missing X2", loaderX2Missing, **common))
+            experiments.append(MVCEExperiment(loaderClean, "Missing X1", loaderX1Missing, **common))
+            experiments.append(MVCEExperiment(loaderClean, "Missing X2", loaderX2Missing, **common))
 
     # get the work started
     distributeTasks(experiments, args.threads)
@@ -223,7 +223,7 @@ if __name__ == '__main__':
         csvWriter = csv.writer(csvFile)
 
         # write headers
-        CalibrationExperiment.writeResultHeaders(csvWriter, args.trials)
+        MVCEExperiment.writeResultHeaders(csvWriter, args.trials)
         # write rows
         for experiment in experiments:
             experiment.writeResults(csvWriter)

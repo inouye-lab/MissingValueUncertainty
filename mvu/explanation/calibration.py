@@ -256,7 +256,7 @@ def computeECE(loader: DataLoader, classifier: Regressor, classCount: int, bucke
     return ece, accuracy
 
 
-class CalibrationExperiment:
+class MVCEExperiment:
     # mvce parameters, see `computeMVCE` for docs
     cleanLoader: DataLoader
     mutatedLoader: DataLoader

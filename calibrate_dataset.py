@@ -13,8 +13,8 @@ from torch.utils.data import DataLoader
 from mvu.dataset.loader import getDatasetSplits
 from mvu.dataset.mutators import SpecificFeatureRemovingDataset, createMask, IncludeMask
 from mvu.dataset.specialized.celeba import CelebADataset
-from mvu.explanation.actions import createActionSpace, createActionSpaceExpectation
-from mvu.explanation.calibration import CalibrationExperiment, CalibrationScaleExperiment
+from mvu.explanation.actions import createActionSpaceExpectation
+from mvu.explanation.calibration import CalibrationScaleExperiment
 from mvu.explanation.decision import DecisionMaker
 from mvu.explanation.dirichlet import DirichletDecisionMaker, DirichletClassifier
 from mvu.explanation.moments import MethodOfMomentsDecisionMaker
