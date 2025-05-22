@@ -25,7 +25,7 @@ python calibrate_dataset.py celeba --output ./results/calibration/$feature/$mask
     }' \
     --classifier "./models/celeba/$feature/celeba-$model.pklz" \
     --cuda_index $cuda --mask $mask --calibration_scales 0.1 0.25 0.5 0.75 1 2.5 5 7.5 10 \
-    --cache_directory "/local/scratch/a/sganguli/256/${mask}_validation" \
+    --cache_directory "../../datasets/CelebAMask/cache/256/${mask}_validation" \
     --generator_samples 3 30 \
     --beta_variance_scales 0.99 --zero_imputation --batch_mean_imputation 1 \
     --action_spaces '{"name": "binary", "parameter": 0.1}' \
