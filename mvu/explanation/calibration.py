@@ -383,8 +383,6 @@ class CalibrationScaleExperiment:
     # additional parameters
     maskName: str
     """Name of the missing region"""
-    scale: float
-    """The calibration constant being tested for this experiment"""
     trials: int
     """Number of times to compute the MVCE, for the sake of error bars"""
     time: Optional[float]
@@ -393,14 +391,13 @@ class CalibrationScaleExperiment:
     """MVCE results for this experiment, size is equal to trials"""
 
     def __init__(self, cleanLoader: DataLoader, maskName: str, mutatedLoader: DataLoader, decisionMaker: DecisionMaker,
-                 scale: float, lossFunctions: List[callable], actions: Tensor, buckets: int, trials: int,
+                 lossFunctions: List[callable], actions: Tensor, buckets: int, trials: int,
                  classifier: Regressor = None, rand: Generator = None, device: Optional[torch.device] = None):
         self.cleanLoader = cleanLoader
         self.maskName = maskName
         self.mutatedLoader = mutatedLoader
         self.decisionMaker = decisionMaker
 
-        self.scale = scale
         self.lossFunctions = lossFunctions
         self.actions = actions
 
@@ -466,6 +463,6 @@ class CalibrationScaleExperiment:
 
         csvFile.writerow([
             self.decisionMaker.name, self.maskName, self.time,
-            self.scale, self.results.mean().item(), self.results.std().item(),
+            self.decisionMaker.scale, self.results.mean().item(), self.results.std().item(),
             *[result.item() for result in self.results]
         ])

@@ -3,7 +3,6 @@ import csv
 import json
 import logging
 import os
-import sys
 from typing import List, Optional
 
 import torch
@@ -11,7 +10,7 @@ from torch import nn, Tensor
 from torch.utils.data import DataLoader
 
 from mvu.dataset.loader import getDatasetSplits
-from mvu.dataset.mutators import SpecificFeatureRemovingDataset, createMask, IncludeMask
+from mvu.dataset.mutators import SpecificFeatureRemovingDataset, createMask, IncludeMask, randomDropping
 from mvu.dataset.specialized.celeba import CelebADataset
 from mvu.explanation.actions import createActionSpaceExpectation
 from mvu.explanation.calibration import CalibrationScaleExperiment
@@ -34,12 +33,15 @@ if __name__ == '__main__':
     parser.add_argument("name", type=str, help='Name of the dataset to parse')
     parser.add_argument("--dataset", type=json.loads, default=dict(), help='Dataset arguments')
     parser.add_argument("--cache_directory", type=str, default=None, help='Location to build the cache')
-    parser.add_argument("--mask", type=jsonOrName, help="Name of the mask to use")
     parser.add_argument("--output", type=str, default="./results/", help='Location to save result CSV')
 
     parser.add_argument("--classifier", type=str, help='Path to the pretrained regressor to load')
     parser.add_argument("--classifier_feature", type=str, default=None,
                         help='Feature index from the regressor to use, if -1 uses all features')
+
+    # mutator
+    parser.add_argument("--mask", type=jsonOrName, default=None, help="Name of the mask to use")
+    parser.add_argument("--drop", type=jsonOrName, help="Drop method to use if no mask")
 
     # experiment parameters
     parser.add_argument("--threads", type=int, default=-1, help='Number of worker threads to run')
@@ -53,14 +55,12 @@ if __name__ == '__main__':
     # baseline options
     parser.add_argument("--zero_imputation", action='store_true',
                         help="If true, includes zero imputation.")
-    parser.add_argument("--singleSample_imputation", action='store_true',
-                        help="If true, includes baselines for basic types of imputation.")
-    parser.add_argument("--groundTruthGenerator_imputation", action='store_true',
-                        help="If true, includes baselines for basic types of imputation.")
     parser.add_argument("--zero_variance", action='store_true',
                         help="If true, includes zero variance.")
     parser.add_argument("--beta_variance_scales", type=float, nargs='*', default=[],
                         help="Scales of the beta variance to try for basic imputation.")
+
+    # calibration options
     parser.add_argument("--calibration_scales", type=float, nargs='*', default=[],
                         help="Scales of the beta variance to try for basic imputation.")
 
@@ -103,15 +103,19 @@ if __name__ == '__main__':
 
     # load in dataset
     ds = getDatasetSplits(args.name, **args.dataset)
-    logging.info(f"Using dataset {args.name} with {len(ds.test)} test samples")
-    # TODO: generalize this code so other datasets can get original names
-    assert isinstance(ds.test, CelebADataset)
+    classCount = len(ds.metadata.target)
+    logging.info(f"Using dataset {args.name} with {len(ds.test)} test samples and {classCount} classes")
     if args.classifier_feature is not None:
+        # TODO: generalize this code so other datasets can get original names
+        assert isinstance(ds.test, CelebADataset)
         classifier.setFeatureIndex(ds.test.attributes.originalNames.index(args.classifier_feature))
+        classCount = 1
 
     # determine mask
-    logging.info("Loading mask " + args.mask["name"])
-    mask = createMask(ds.metadata, **args.mask)
+    mask: Optional[Tensor] = None
+    if args.mask is not None:
+        logging.info("Loading mask " + args.mask["name"])
+        mask = createMask(ds.metadata, **args.mask)
 
     # start setup for decision makers
     decisionMakers: List[DecisionMaker] = []
@@ -122,26 +126,32 @@ if __name__ == '__main__':
         if isinstance(classifier.nn, Resnet18Dirichlet):
             logging.info(f"Including Dirichlet decision maker")
             classifier.activation = None
-            for scale_val in args.calibration_scales:
-                decisionMakers.append(DirichletDecisionMaker(classifier, args.decision_samples, scale=scale_val))
+            decisionMakers.extend(DirichletDecisionMaker(classifier, args.decision_samples, scale=scale) for scale in args.calibration_scales)
             includeMask = IncludeMask.MISSING
             # substitute the classifier for the remaining methods with one that convert to mean
-            classifier = DirichletClassifier.fromRegressor(classifier, num_classes=len(ds.metadata.labels))
-        else:
-            # TODO: will it always be true that we wish to set the activation function like this? maybe it should be set at a nn level
+            classifier = DirichletClassifier.fromRegressor(classifier, num_classes=classCount)
+        elif classCount == 1:
+            logging.info(f"Setting classifier activation function to sigmoid for single class")
             classifier.activation = nn.Sigmoid()
+        else:
+            logging.info(f"Setting classifier activation function to softmax for multiclass")
+            # TODO: will it always be true that we wish to set the activation function like this? maybe it should be set at a nn level
+            classifier.activation = nn.Softmax(dim=1)
 
     # methods
     methods: List[Method] = []
     # add generator method if we have a caching batch generator
     generator: Optional[BatchGenerator] = None
     if args.cache_directory is not None:
-        logging.info(f"Creating generator using cache at {args.cache_directory}")
-        generator = CachingBatchGenerator(None, args.cache_directory, mask.to(device))
-        methods.extend(
-            MonteCarloBatchMethod(classifier, generator, samples)
-            for samples in args.generator_samples
-        )
+        if mask is None:
+            logging.error("Attempting to use a cache directory with no mask, this does not work")
+        else:
+            logging.info(f"Creating generator using cache at {args.cache_directory}")
+            generator = CachingBatchGenerator(None, args.cache_directory, mask.to(device))
+            methods.extend(
+                MonteCarloBatchMethod(classifier, generator, samples)
+                for samples in args.generator_samples
+            )
 
     # basic imputation
     if args.zero_variance or len(args.beta_variance_scales) > 0:
@@ -182,28 +192,32 @@ if __name__ == '__main__':
 
     # setup datasets
     # if we have any methods beyond the Dirichlet, then use nan for the missing value. 0 is faster but isn't what most methods support
-    dsMissing = SpecificFeatureRemovingDataset(ds.validate, mask, includeMask=includeMask, missingValue=torch.nan if len(methods) > 0 else 0)
+    missingArgs = dict(includeMask=includeMask, missingValue=torch.nan if len(methods) > 0 else 0)
+    maskName: str
+    if mask is not None:
+        logging.info(f"Using masked dataset with mask {args.mask}")
+        maskName = args.mask["name"]
+        dsMissing = SpecificFeatureRemovingDataset(ds.validate, mask, **missingArgs)
+    else:
+        logging.info(f"Using randon dropping with arguments {args.drop}")
+        maskName = args.drop["name"] # TODO: use dataset name instead
+        dsMissing = randomDropping(ds.validate, ds.metadata, **missingArgs, **args.drop)
 
+    # TODO: our newer datasets support returning the original if prompted, don't need loaderClean
     loaderClean = DataLoader(ds.validate, batch_size=args.batch_size, pin_memory=True)
     loaderMissing = DataLoader(dsMissing, batch_size=args.batch_size, pin_memory=True)
 
     # finally, build experiment list
     experiments: List[CalibrationScaleExperiment] = []
 
-    lossFunctionBatch: List[callable] = []
-    actions: Optional[Tensor] = None
-    lossFunctionBatch, actions = createActionSpaceExpectation(args.action_spaces, size=1, device=device)
-    # for actionParams in args.action_spaces:
-    #     logging.info(f"Considering action space {actionParams['name']}")
-    #     lossFunction, actions = createActionSpace(size=args.class_count, device=device, **actionParams)
+    lossFunctionBatch, actions = createActionSpaceExpectation(args.action_spaces, size=classCount, device=device)
     for decisionMaker in decisionMakers:
         experiments.append(CalibrationScaleExperiment(
-            loaderClean, args.mask["name"], loaderMissing,
+            loaderClean, maskName, loaderMissing,
             decisionMaker=decisionMaker,
             lossFunctions=lossFunctionBatch, actions=actions,
             buckets=args.buckets, trials=args.trials,
-            classifier=classifier, device=device,
-            scale=decisionMaker.scale
+            classifier=classifier, device=device
         ))
 
     # get the work started

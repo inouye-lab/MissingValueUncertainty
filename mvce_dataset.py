@@ -7,7 +7,6 @@ import pandas as pd
 from typing import List, Optional
 
 import torch
-import sys
 from torch import nn, Tensor
 from torch.utils.data import DataLoader
 
@@ -103,11 +102,13 @@ if __name__ == '__main__':
 
     # load in dataset
     ds = getDatasetSplits(args.name, **args.dataset)
-    logging.info(f"Using dataset {args.name} with {len(ds.test)} test samples")
+    classCount = len(ds.metadata.target)
+    logging.info(f"Using dataset {args.name} with {len(ds.test)} test samples and {classCount} classes")
     if args.classifier_feature is not None:
         # TODO: generalize this code so other datasets can get original names
         assert isinstance(ds.test, CelebADataset)
         classifier.setFeatureIndex(ds.test.attributes.originalNames.index(args.classifier_feature))
+        classCount = 1
 
     # determine calibration
     method_to_scale = {}
@@ -135,8 +136,8 @@ if __name__ == '__main__':
             decisionMakers.append(DirichletDecisionMaker(classifier, args.decision_samples, scale=method_to_scale["Dirichlet Network"] if method_to_scale else 1))
             includeMask = IncludeMask.MISSING
             # substitute the classifier for the remaining methods with one that convert to mean
-            classifier = DirichletClassifier.fromRegressor(classifier, num_classes=len(ds.metadata.target))
-        elif len(ds.metadata.target) == 1:
+            classifier = DirichletClassifier.fromRegressor(classifier, num_classes=classCount)
+        elif classCount == 1:
             logging.info(f"Setting classifier activation function to sigmoid for single class")
             classifier.activation = nn.Sigmoid()
         else:
@@ -215,10 +216,9 @@ if __name__ == '__main__':
 
     # finally, build experiment list
     experiments: List[MVCEExperiment] = []
-    numClasses = 1 if args.classifier_feature is not None else len(ds.metadata.target)
     for actionParams in args.action_spaces:
         logging.info(f"Considering action space {actionParams['name']}")
-        lossFunction, actions = createActionSpace(size=numClasses, device=device, **actionParams)
+        lossFunction, actions = createActionSpace(size=classCount, device=device, **actionParams)
         for decisionMaker in decisionMakers:
             experiments.append(MVCEExperiment(
                 loaderClean, maskName, loaderMissing,
