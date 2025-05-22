@@ -168,6 +168,94 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
         return mvce, consistency
     return mvce
 
+def computeECE(loader: DataLoader, classifier: Regressor, classCount: int, buckets: int,
+               device: Optional[torch.device] = None) -> Tuple[Tensor, Tensor]:
+    """
+    Computes the expected calibration error for the given classifier.
+    :param loader:          DataLoader for data with no missingness.
+    :param classifier:      Classifier to test.
+    :param buckets:         Number of buckets for computing the calibration error.
+    :param classCount:      Number of expected features
+    :param device:          Device to use for calculations
+    :return:  Computed expected calibration error and accuracy
+    """
+    time = perf_counter()
+    bucketSizes = torch.zeros((buckets,), dtype=torch.int, device=device)
+    bucketConfidence = torch.zeros((buckets,), dtype=torch.float, device=device)
+    bucketAccuracy = torch.zeros((buckets,), dtype=torch.float, device=device)
+
+    actionCount = classCount if classCount > 1 else 2
+    labelCount = torch.zeros((actionCount,), dtype=torch.int, device=device)
+    predictedCount = torch.zeros((actionCount,), dtype=torch.int, device=device)
+
+    accurateSamples = torch.zeros((1,), dtype=torch.int, device=device)
+
+    for i, (features, labels) in enumerate(loader):
+        features: Tensor
+        labels: Tensor = labels.squeeze()
+        if device is not None:
+            features = features.to(device)
+            labels = labels.to(device)
+        phi = classifier.predict(features).squeeze()
+
+        # if we only have 1 class, threshold to 0.5
+        prediction: Tensor
+        confidence: Tensor
+        if len(phi.shape) == 1 or phi.shape[1] == 1:
+            prediction = (phi >= 0.5).int()
+            confidence = (phi * prediction + (1 - phi) * (1 - prediction))
+        else:
+            max = phi.max(1)
+            confidence = max.values
+            prediction = max.indices
+
+        # map the confidence values to the bucket index
+        bucketIndices = (confidence * buckets).int()
+        # any confidence of 1.0 gets mapped to max bucket
+        bucketIndices[bucketIndices == buckets] = buckets - 1
+
+        # accuracy metric: predicted label matches actual
+        accuracy = torch.eq(prediction, labels)
+        # track total accuracy
+        accurateSamples += torch.sum(accuracy)
+
+        labelCount += labels.int().bincount(minlength=actionCount)
+        predictedCount += prediction.bincount(minlength=actionCount)
+
+        # bucketSizes = indices.bincount(minlength = buckets)
+        for bucket in range(buckets):
+            bucketMask = bucketIndices == bucket
+            bucketSize = torch.count_nonzero(bucketMask)
+            bucketSizes[bucket] += bucketSize
+            if bucketSize > 0:
+                bucketConfidence[bucket] += confidence[bucketMask].sum()
+                bucketAccuracy[bucket] += torch.count_nonzero(accuracy[bucketMask])
+
+    # up until now, bucketConfidence and bucketConsistency have been sums, need to divide by total size for prob
+    # need to be careful about divide by zero though, so skip empty buckets
+    nonZero = torch.ne(bucketSizes, 0)
+    bucketSizes = bucketSizes[nonZero]
+    bucketConfidence = bucketConfidence[nonZero] / bucketSizes
+    bucketAccuracy = bucketAccuracy[nonZero] / bucketSizes
+
+    totalSamples = bucketSizes.sum()
+    ece = (bucketSizes * torch.abs(bucketAccuracy - bucketConfidence)).sum() / totalSamples
+    accuracy = accurateSamples / totalSamples
+    time = perf_counter() - time
+    logging.info(f"""
+        Computed ECE {ece.cpu().item()} in {time} seconds with {buckets} buckets:
+        * Non-zero buckets: {torch.nonzero(nonZero).squeeze().cpu()}
+        * Final bucket sizes: {bucketSizes.cpu()} totaling {totalSamples.cpu().item()} samples
+        * Final bucket confidences: {bucketConfidence.cpu()}
+        * Final bucket accuracy: {bucketAccuracy.cpu()}
+        * Label counts: {labelCount.cpu()}
+        * Prediction Action Counts: {predictedCount.cpu()}
+        * Average accuracy: {accuracy.cpu().item()}
+    """)
+
+    # return final values
+    return ece, accuracy
+
 
 class CalibrationExperiment:
     # mvce parameters, see `computeMVCE` for docs
