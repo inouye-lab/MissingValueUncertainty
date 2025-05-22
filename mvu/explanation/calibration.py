@@ -73,7 +73,7 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
 
             # debug which samples are skipped
             # TODO: can we support integer tensors here?
-            if supportedIndices.dtype == torch.bool and torch.count_nonzero(~supportedIndices) == 0:
+            if supportedIndices.dtype == torch.bool and torch.count_nonzero(~supportedIndices) != 0:
                 logging.warn(f"Skipping samples at indices {sampleIndices[~supportedIndices]}, unsupported by decision maker")
 
             # skip the batch if it has no processable samples
