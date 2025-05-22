@@ -78,7 +78,6 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
 
             # skip the batch if it has no processable samples
             if torch.count_nonzero(supportedIndices) == 0:
-                # TODO: log a warning here for any skipped samples
                 continue
             sampleIndices = sampleIndices[supportedIndices]
         else:
@@ -344,7 +343,7 @@ class CalibrationExperiment:
         :param trials:   Number of trial headers to include
         """
         csvFile.writerow([
-            "Method", "Action Space", "Mask", "Time",
+            "Method", "Action Space", "Mask", "Time", "Scale",
             "MVCE Mean", "MVCE Std",
             "Consistency Mean", "Consistency Std",
             *[f"Trial {i+1} MVCE" for i in range(trials)],
@@ -360,7 +359,7 @@ class CalibrationExperiment:
             logging.error(f"Skipping including {self.experimentName} in result CSV as it did not complete.")
 
         csvFile.writerow([
-            self.decisionMaker.name, self.actionName, self.maskName, self.time,
+            self.decisionMaker.name, self.actionName, self.maskName, self.time, self.decisionMaker.scale,
             self.results.mean().item(), self.results.std().item(),
             self.consistencies.mean().item(), self.consistencies.std().item(),
             *[result.item() for result in self.results],

@@ -9,14 +9,10 @@ feature=$1
 model=$2
 mask=$3
 cuda=$4
-calibration=""
-if [ $# -ge 5 ]; then
-  calibration="--calibration_map ./results/calibration/$feature/$5.csv" # CSV file for dictionary thing
-fi
 all=""
-if [ $# -ge 6 ]; then
+if [ $# -ge 5 ]; then
   all="
-    --cache_directory ../../datasets/CelebAMask/cache/256/${mask}_test
+    --cache_directory ../../datasets/CelebAMask/cache/256/${mask}_validation
     --generator_samples 3 30
     --zero_variance --beta_variance_scales 0.5 0.99 --zero_imputation --batch_mean_imputation 1
   "
@@ -28,7 +24,7 @@ shift 4
 source ../../miniconda/bin/activate
 conda activate ./venv
 
-python mvce_dataset.py celeba --output ./results/mvce-25/$feature/$mask/ \
+python calibrate_dataset.py celeba --output ./results/mvce-25/$feature/$mask/ \
     --dataset '{
       "path": "../../datasets/CelebAMask/256/img",
       "lists_root": "datasets/celeba",
@@ -37,5 +33,11 @@ python mvce_dataset.py celeba --output ./results/mvce-25/$feature/$mask/ \
       "targets": ["'$feature'"]
     }' \
     --classifier "./models/dirichlet-celeba/$feature/celeba-$model.pklz" \
-    --cuda_index $cuda --mask $mask $all $calibration \
-    --action_spaces zero-one --threads 4 --trials 4
+    --calibration_scales 0.1 0.25 0.5 0.75 1 2.5 5 7.5 10 \
+    --cuda_index $cuda --mask $mask $all \
+    --action_spaces '{"name": "binary", "parameter": 0.1}' \
+    '{"name": "binary", "parameter": 0.2}' '{"name": "binary", "parameter": 0.3}' \
+    '{"name": "binary", "parameter": 0.4}' '{"name": "binary", "parameter": 0.5}' \
+    '{"name": "binary", "parameter": 0.6}' '{"name": "binary", "parameter": 0.7}' \
+    '{"name": "binary", "parameter": 0.8}' '{"name": "binary", "parameter": 0.9}' \
+    --threads 4 --trials 4
