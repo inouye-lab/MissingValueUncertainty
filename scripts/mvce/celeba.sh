@@ -31,6 +31,6 @@ python mvce_dataset.py celeba --output ./results/mvce-25/$feature/$mask/ \
     --cuda_index $cuda --mask $mask $calibration \
     --cache_directory "../../datasets/CelebAMask/cache/256/${mask}_test" \
     --generator_samples 3 30 \
-    --beta_variance_scales 0.99 --zero_imputation --batch_mean_imputation 1 \
+    --beta_variance_scales 0.5 0.99 --zero_imputation --batch_mean_imputation 1 \
     --action_spaces zero-one \
     --threads 4 --trials 4
