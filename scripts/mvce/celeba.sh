@@ -11,7 +11,7 @@ mask=$3
 cuda=$4
 calibration=""
 if [ $# -ge 5 ]; then
-  calibration="--calibration_map ./results/calibration/$feature/$5.csv" # CSV file for dictionary thing
+  calibration="--calibration_map ./results/calibration/celeba/$feature/$5.csv" # CSV file for dictionary thing
 fi
 shift $#
 

@@ -2,11 +2,17 @@
 
 # Print usage if unspecified
 if [ $# -le 1 ]; then
-  echo "Expected arguments: <model> <cuda>"
+  echo "Expected arguments: <model> <cuda> [calibration]"
   exit 1
 fi
 model=$1
 cuda=$2
+calibration=""
+zero_var="--zero_variance"
+if [ $# -ge 3 ]; then
+  calibration="--calibration_map ./results/calibration/starcraft/starcraft.csv" # CSV file for dictionary thing
+  zero_var=""
+fi
 shift $#
 
 # Loads in all relevant datasets
@@ -17,5 +23,5 @@ python mvce_dataset.py starcraft --output ./results/mvce-starcraft/ \
     --dataset '{ "path": "../../datasets/starcraftimage", "image_format": "cifar10", "image_size": 224, "sensor_size": 56 }' \
     --classifier "./models/starcraft-cifar10/starcraft-$model.pklz" \
     --cuda_index $cuda --drop block-dropout \
-    --zero_variance --beta_variance_scales 0.5 0.99 --zero_imputation \
+    $zero_var --beta_variance_scales 0.5 0.99 --zero_imputation $calibration \
     --action_spaces zero-one --threads 4 --trials 4
