@@ -9,7 +9,7 @@ model=$1
 cuda=$2
 calibration=""
 if [ $# -ge 3 ]; then
-  calibration="--calibration_map ./results/calibration/starcraft/starcraft.csv" # CSV file for dictionary thing
+  calibration="--calibration_map ./results/calibration/starcraft/$3.csv" # CSV file for dictionary thing
 fi
 all=""
 #if [ $# -ge 3 ]; then

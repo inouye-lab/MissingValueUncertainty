@@ -10,7 +10,7 @@ cuda=$2
 calibration=""
 zero_var="--zero_variance"
 if [ $# -ge 3 ]; then
-  calibration="--calibration_map ./results/calibration/cifar10/cifar10.csv" # CSV file for dictionary thing
+  calibration="--calibration_map ./results/calibration/cifar10/$3.csv" # CSV file for dictionary thing
   zero_var=""
 fi
 shift $#
