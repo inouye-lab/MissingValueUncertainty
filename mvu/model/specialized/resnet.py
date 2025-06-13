@@ -1,3 +1,5 @@
+import logging
+
 import torch
 from torch import nn, Tensor
 from torch.nn import Module, Conv2d
@@ -66,8 +68,15 @@ class Resnet18Classifier(Module):
         return features
 
 
-def _createResnetConv2dWithMissing():
-    return Conv2d(4, 64, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+def _createResnetConv2dWithMissing(original: Conv2d, copyWeights: bool = False):
+    layer = Conv2d(4, 64, kernel_size=7, stride=3, padding=3, bias=False)
+    if copyWeights:
+        logging.info("Copying original first layer weights for Resnet DMV")
+        layer.weight.data[:,0:3,:,:] = original.weight.data.clone()
+        layer.weight.data[:,3,:,:] = 0
+    else:
+        logging.info("Using randomized first layer weights for Resnet DMV")
+    return layer
 
 
 def _flattenSingleClass(num_classes: int) -> int:
@@ -81,10 +90,10 @@ class Resnet18Dirichlet(Resnet18Classifier):
     """
     Resnet structure that inputs a 4 channel image (with missingness) and outputs a strength vector
     """
-    def __init__(self, num_classes: int, minStrength: float = 1e-35, activation: str = "softplus", *args, **kwargs):
+    def __init__(self, num_classes: int, minStrength: float = 1e-35, activation: str = "softplus", copy_input_weights: bool = False, *args, **kwargs):
         super().__init__(_flattenSingleClass(num_classes), *args, activation=activation, **kwargs)
         # swap out first layer for one with 4 channels, 4th is missing
-        self.resnet.conv1 = _createResnetConv2dWithMissing()
+        self.resnet.conv1 = _createResnetConv2dWithMissing(self.resnet.conv1, copyWeights=copy_input_weights)
         self.minStrength = minStrength
 
     def forward(self, features: Tensor):
@@ -100,12 +109,12 @@ class Resnet18DirichletStrength(Resnet18Classifier):
     """
     Resnet structure that inputs a 4 channel image (with missingness) and outputs a probability vector plus strength.
     """
-    def __init__(self, num_classes: int, minStrength: float = 1e-35, *args, **kwargs):
+    def __init__(self, num_classes: int, minStrength: float = 1e-35, copy_input_weights: bool = False, *args, **kwargs):
         self.numClasses = _flattenSingleClass(num_classes)
         # added an extra 1 class for the final fully connected layer
         super().__init__(self.numClasses + 1, *args, **kwargs)
         # swap out first layer for one with 4 channels, 4th is missing
-        self.resnet.conv1 = _createResnetConv2dWithMissing()
+        self.resnet.conv1 = _createResnetConv2dWithMissing(self.resnet.conv1, copyWeights=copy_input_weights)
         self.minStrength = minStrength
 
     def forward(self, features: Tensor):
