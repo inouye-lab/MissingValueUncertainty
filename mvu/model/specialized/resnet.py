@@ -30,6 +30,7 @@ class Resnet18Classifier(Module):
         :param momentum:              If set, overrides the momentum property in all BatchNorm2d layers
         :param track_running_stats:   If set, overrides the track_running_stats property in all BatchNorm2d layers
         :param pretrained_weights:    If true, uses `ResNet18_Weights.DEFAULT` for the starting weights. False uses none
+        :param keep_final_layer:      If true, keeps the weights of the final layer. Class count must match to use
         """
         super().__init__()
 
@@ -47,7 +48,9 @@ class Resnet18Classifier(Module):
         if keep_final_layer:
             assert self.resnet.fc.out_features == self.numClasses,\
                 f"Cannot keep final layer if the class count differs; layer size {self.resnet.fc.out_features} for class count {self.numClasses}"
+            logging.info("Keeping original final layer for Resnet model")
         else:
+            logging.info(f"Replacing final layer in Resnet for {num_classes} classes")
             self.resnet.fc = nn.Linear(self.resnet.fc.in_features, num_classes)
         if activation == "sigmoid":
             self.activation = nn.Sigmoid()
