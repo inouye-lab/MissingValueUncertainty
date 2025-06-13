@@ -4,7 +4,7 @@ import json
 import logging
 import os
 from time import perf_counter
-from typing import List
+from typing import List, Optional
 
 import torch
 from torch import Tensor, Generator, nn
@@ -84,6 +84,19 @@ if __name__ == '__main__':
     # device setup
     device = selectDevice(args.cuda_index)
 
+    # load in the teacher
+    teacher: Optional[NeuralNetworkRegressor] = None
+    if args.teacher is not None:
+        logging.info(f"Using teacher model from {args.teacher}")
+        teacher = NeuralNetworkRegressor.load(args.teacher)
+        teacher.to(device)
+        teacher.nn.eval()
+        # TODO: is there a way to not hardcode this?
+        if len(ds.metadata.labels) == 1:
+            teacher.activation = nn.Sigmoid()
+        else:
+            teacher.activation = nn.Softmax(dim=1)
+
     # construct model
     logging.info("Constructing neural network")
     model: NeuralNetworkRegressor
@@ -93,23 +106,17 @@ if __name__ == '__main__':
         # ensure the feature index is set, don't want to accidentally retrain with fewer features
         model.setFeatureIndex(-1)
     elif args.architecture is not None:
-        model = createRegressorFromJson(ds, args.architecture)
+        model = createRegressorFromJson(ds, args.architecture, original=teacher)
     else:
         logging.error("Must set either input or architecture")
         exit(1)
     model.to(device)
 
-    if args.teacher is not None:
-        teacher = NeuralNetworkRegressor.load(args.teacher)
-        teacher.to(device)
-        teacher.nn.eval()
-        # TODO: is there a way to not hardcode this?
-        if len(ds.metadata.labels) == 1:
-            teacher.activation = nn.Sigmoid()
-        else:
-            teacher.activation = nn.Softmax(dim=1)
-    else:
+    # ensure the teacher is set
+    if teacher is None:
+        logging.error("Using new model to predict phi values")
         teacher = model
+
 
     logging.info(f"Network has {sum(p.numel() for p in model.nn.parameters() if p.requires_grad)} parameters")
 

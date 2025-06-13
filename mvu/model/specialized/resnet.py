@@ -1,3 +1,4 @@
+import copy
 import logging
 
 import torch
@@ -23,7 +24,8 @@ class Resnet18Classifier(Module):
     """Final activation function"""
 
     def __init__(self, num_classes: int, momentum: float = None, track_running_stats: bool = None,
-                 pretrained_weights: bool = True, activation: str = "sigmoid", keep_final_layer: bool = False):
+                 pretrained_weights: bool = True, activation: str = "sigmoid", keep_final_layer: bool = False,
+                 resnet: resnet18 = None):
         """
         Creates a new instance of the classifier
         :param num_classes:            Number of output classes to use
@@ -31,12 +33,18 @@ class Resnet18Classifier(Module):
         :param track_running_stats:   If set, overrides the track_running_stats property in all BatchNorm2d layers
         :param pretrained_weights:    If true, uses `ResNet18_Weights.DEFAULT` for the starting weights. False uses none
         :param keep_final_layer:      If true, keeps the weights of the final layer. Class count must match to use
+        :param resnet:                Existing resnet architecture to copy. If None, creates one
         """
         super().__init__()
 
         # repurposing resnet for the classifier
         # swap out the final layer for our new class list
-        self.resnet = resnet18(weights=ResNet18_Weights.DEFAULT if pretrained_weights else None)
+        if resnet is not None:
+            logging.info("Using passed Resnet model")
+            self.resnet = resnet
+        else:
+            logging.info(f"Creating new Resnet with {'pretrained' if pretrained_weights else 'randomized'} weights")
+            self.resnet = resnet18(weights=ResNet18_Weights.DEFAULT if pretrained_weights else None)
         if momentum is not None or track_running_stats is not None:
             for module in self.resnet.modules():
                 if isinstance(module, nn.BatchNorm2d):
@@ -106,6 +114,13 @@ class Resnet18Dirichlet(Resnet18Classifier):
         strengths = torch.clamp(self.activation(strengths), min=self.minStrength)
         # return the strengths alone
         return strengths
+
+    @classmethod
+    def fromResnet(cls, classifier: Resnet18Classifier, *args, keep_final_layer: bool = True, copy_input_weights: bool = True, **kwargs):
+        """Copies a resnet classifier to create a new dirichlet network"""
+        # by default, we want to keep final and input layer as the goal of copying is as similar of a model as possible
+        return cls(classifier.numClasses, *args, resnet=copy.deepcopy(classifier.resnet),
+                   keep_final_layer=keep_final_layer, copy_input_weights=copy_input_weights, **kwargs)
 
 
 class Resnet18DirichletStrength(Resnet18Classifier):

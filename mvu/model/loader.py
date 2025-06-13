@@ -21,12 +21,13 @@ def _ensureNumClassesSet(name: str, ds: TorchDatasetSplits, kwargs: Dict):
             kwargs["num_classes"] = 1
     logging.info(f"Constructing {name} with {kwargs['num_classes']} targets")
 
-def createRegressor(ds: TorchDatasetSplits, name, **kwargs) -> NeuralNetworkRegressor:
+def createRegressor(ds: TorchDatasetSplits, name, original: NeuralNetworkRegressor = None, **kwargs) -> NeuralNetworkRegressor:
     """
     Creates a new neural network model
     :param ds:       Dataset
     :param name:     Architecture name
     :param kwargs:   Architecture arguments
+    :param original: Existing model to potentially copy
     :return: Model instance
     """
     if name == "image_regression":
@@ -39,11 +40,18 @@ def createRegressor(ds: TorchDatasetSplits, name, **kwargs) -> NeuralNetworkRegr
         else:
             raise ValueError("image-regression requires the dataset metadata to also be image metadata")
     elif name == "resnet":
+        logging.info(f"Using Resnet18 architecture with {kwargs}")
         _ensureNumClassesSet("ResNet", ds, kwargs)
         return NeuralNetworkRegressor(Resnet18Classifier(**kwargs))
     elif name == "resnet_dirichlet":
+        logging.info(f"Using Resnet18 DMV architecture with {kwargs}")
         _ensureNumClassesSet("ResNet Dirichlet", ds, kwargs)
         return NeuralNetworkRegressor(Resnet18Dirichlet(**kwargs))
+    elif name == "copy_resnet_dirichlet":
+        logging.info(f"Copying to create Resnet18 DMV architecture with {kwargs}")
+        assert original is not None, "Cannot copy if no original model passed"
+        assert isinstance(original.nn, Resnet18Classifier), "Copy resnet requires a resnet classifier to start"
+        return NeuralNetworkRegressor(Resnet18Dirichlet.fromResnet(original.nn, **kwargs))
     elif name == "resnet_dirichlet_strength":
         _ensureNumClassesSet("ResNet Dirichlet Strength", ds, kwargs)
         return NeuralNetworkRegressor(Resnet18DirichletStrength(**kwargs))
@@ -63,17 +71,18 @@ def createRegressor(ds: TorchDatasetSplits, name, **kwargs) -> NeuralNetworkRegr
         raise ValueError(f"Unknown neural network architecture '{name}'")
 
 
-def createRegressorFromJson(ds: TorchDatasetSplits, value: Union[str, List, Dict]) -> NeuralNetworkRegressor:
+def createRegressorFromJson(ds: TorchDatasetSplits, value: Union[str, List, Dict], original: NeuralNetworkRegressor = None) -> NeuralNetworkRegressor:
     """
     Creates a new model using the passed JSON data
     :param ds:      Dataset
     :param value:   Value parsed from JSON argument
+    :param original: Existing model to potentially copy
     :return: Model instance
     """
     if isinstance(value, dict):
-        return createRegressor(ds, **value)
+        return createRegressor(ds, original=original, **value)
     if isinstance(value, list):
-        return createRegressor(ds, name="simple_fully_connected", layers=value)
+        return createRegressor(ds, name="simple_fully_connected", layers=value, original=original)
     return createRegressor(ds, name=value)
 
 
