@@ -64,7 +64,7 @@ def _createDataset(path: str, train: bool, transform: callable, image_format: st
 
 def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = None,
                            validation_percent: float = 0.3, samples: Dict[str,int] = None,
-                           image_format: str = 'bag-of-units-first',
+                           image_format: str = 'bag-of-units-first', normalization: str = "0.5",
                            image_size: int = 64, sensor_size: int = 1, **kwargs) -> TorchDatasetSplits:
     """
     Creates the needed objects to use the starcraft dataset
@@ -73,6 +73,7 @@ def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = No
     :param validation_percent:  Percentage of training data to use for validation
     :param samples:             Maximum samples from the dataset to use for train, validate, and test.
     :param image_format:        Format to use for the dataset, supports 'bag-of-units-first' and 'cifar10'
+    :param normalization:       Normalization method to use for images. Defaults to 0.5 mean and std.
     :param image_size:          Size of the image in pixels
     :param sensor_size:         Size of sensors for making values missing
     :param kwargs:              Additional image transform parameters
@@ -100,7 +101,7 @@ def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = No
     meta = ImageDatasetMeta("starcraft", targets, image_size, sensor_size, 3)
 
     # find transform
-    transformFunc = getTransform(image_size, 32 if image_format == "cifar10" else 64, **kwargs)
+    transformFunc = getTransform(image_size, 32 if image_format == "cifar10" else 64, normalization=normalization, **kwargs)
 
     # we only have train and test for starcraft, so split train into train and validation by percent
     # TODO: consider supporting seeded randomizing the split indices? prevent bias due to ordering in the set
