@@ -4,7 +4,7 @@ import logging
 
 import torch
 from torch import nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 
 from mvu.dataset.loader import getDatasetSplits
 from mvu.explanation.calibration import computeECE
@@ -32,6 +32,8 @@ if __name__ == '__main__':
     # ECE
     parser.add_argument('--buckets', type=int, default=10,
                         help='Number of buckets for calibration error calculations')
+    parser.add_argument('--split', type=str, default="test",
+                        help='Dataset split to use')
 
     # Missing setup
     parser.add_argument('--seed', type=int, default=1337, help='Seed for random permutations')
@@ -71,8 +73,19 @@ if __name__ == '__main__':
             # TODO: will it always be true that we wish to set the activation function like this? maybe it should be set at a nn level
             classifier.activation = nn.Softmax(dim=1)
 
+    # select dataset split
+    dataset: Dataset
+    if args.split == "test":
+        dataset = ds.test
+    elif args.split == "train":
+        dataset = ds.train
+    elif args.split == "validate":
+        dataset = ds.validate
+    else:
+        raise ValueError(f"Unknown split {args.split}")
+
     # load in dataset
-    loader = DataLoader(ds.test, batch_size=args.batch_size, pin_memory=True)
+    loader = DataLoader(dataset, batch_size=args.batch_size, pin_memory=True)
 
     # finally, compute ECE
     computeECE(loader, classifier, classCount, args.buckets, device)
