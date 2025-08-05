@@ -9,10 +9,11 @@ from typing import List, Optional
 import torch
 from torch import Tensor, Generator, nn
 from torch.nn import Identity
+from torch.nn.functional import sigmoid
 from torch.utils.data import DataLoader, Dataset
 
-from mvu.dataset.mutators import IncludeMask, randomDropping
 from mvu.dataset.loader import getDatasetSplits
+from mvu.dataset.mutators import IncludeMask, randomDropping, MaskedDataset
 from mvu.dataset.mutators import createMask, RandomMaskedDataset, distributeMasks
 from mvu.logger import setupLogging
 from mvu.model.loader import createRegressorFromJson
@@ -139,6 +140,9 @@ if __name__ == '__main__':
 
     commonMaskArgs = dict(missingValue=0, includeMask=includeMask, returnOriginal=True)
 
+    # clean validation data for accuracy check
+    cleanValidation = MaskedDataset(ds.validate, createMask(ds.metadata, "none"), missingValue=0, includeMask=includeMask)
+
     masks: List[Tensor] = []
     if len(args.masks) > 0:
         logging.info(f"Using masked missingness with {args.masks}")
@@ -148,13 +152,14 @@ if __name__ == '__main__':
         # for validation, split the set into parts using each mask
         maskedValidation = distributeMasks(ds.validate, masks, rand, **commonMaskArgs)
     else:
-        logging.info(f"Using randon dropping with arguments {args.drop}")
+        logging.info(f"Using random dropping with arguments {args.drop}")
         maskedTraining   = randomDropping(ds.train,    ds.metadata, **commonMaskArgs, **args.drop)
         maskedValidation = randomDropping(ds.validate, ds.metadata, **commonMaskArgs, **args.drop)
 
     # setup data loading
     trainLoader    = DataLoader(maskedTraining,   batch_size=args.batch_size, shuffle=True,  generator=rand, pin_memory=True)
     validateLoader = DataLoader(maskedValidation, batch_size=args.batch_size, shuffle=False, generator=rand, pin_memory=True)
+    cleanLoader    = DataLoader(cleanValidation,  batch_size=args.batch_size, shuffle=False, generator=rand, pin_memory=True)
 
     # logic to handle evaluating batches
     def batchHandler(maskedFeatures: Tensor, cleanFeatures: Tensor, targets: Tensor):
@@ -167,11 +172,21 @@ if __name__ == '__main__':
         loss = lossFunction(cleanPrediction, maskedPrediction, targets).item()
         return loss, targets.shape[0]
 
+    if len(ds.metadata.target) == 1:
+        def accuracyLoss(prediction: Tensor, targets: Tensor) -> Tensor:
+            return torch.eq(sigmoid(prediction), targets).float().mean(dim=0)
+    else:
+        def accuracyLoss(prediction: Tensor, targets: Tensor) -> Tensor:
+            return torch.eq(prediction.max(dim=1).indices, targets).float().mean(dim=0)
+
     # evaluate the initial model
     model.nn.eval()
     if args.evaluate_training:
         trainingAccuracy = Regressor.evaluateData(trainLoader, batchHandler)
         logging.info(f"Initial training error {trainingAccuracy.mean().item()}")
+
+    validationAccuracy = model.evaluateDataloader(cleanLoader, device=device, lossFunction=accuracyLoss)
+    logging.info(f"Initial validation accuracy {validationAccuracy}")
 
     validationError = Regressor.evaluateData(validateLoader, batchHandler)
     validationBest = validationError.mean().item()
@@ -226,6 +241,8 @@ if __name__ == '__main__':
             if args.evaluate_training:
                 trainingAccuracy = Regressor.evaluateData(trainLoader, batchHandler)
                 logging.info(f"Training error in evaluate mode {trainingAccuracy.mean().item()}")
+            validationAccuracy = model.evaluateDataloader(cleanLoader, device=device, lossFunction=accuracyLoss)
+            logging.info(f"Validation accuracy: {validationAccuracy}")
 
             # FIXME: there is probably a better way to compare multiple variables
             validationError = Regressor.evaluateData(validateLoader, batchHandler)
