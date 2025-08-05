@@ -80,7 +80,7 @@ class Resnet18Classifier(Module):
 
 
 def _createResnetConv2dWithMissing(original: Conv2d, copyWeights: bool = False):
-    layer = Conv2d(4, 64, kernel_size=7, stride=3, padding=3, bias=False)
+    layer = Conv2d(4, 64, kernel_size=7, stride=2, padding=3, bias=False)
     if copyWeights:
         logging.info("Copying original first layer weights for Resnet DMV")
         layer.weight.data[:,0:3,:,:] = original.weight.data.clone()
