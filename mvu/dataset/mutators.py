@@ -1,12 +1,9 @@
-import logging
 from abc import abstractmethod, ABC
-from math import ceil
-
-import torch
 from enum import Enum
-
+from math import ceil
 from typing import TypeVar, Tuple, Optional, List, Union
 
+import torch
 from overrides import override
 from torch import Tensor, Generator
 from torch.utils.data import Dataset, random_split, ConcatDataset
@@ -306,15 +303,21 @@ class BlockDropoutDataset(BlockRemovingDataset):
     dropChances: Tensor
 
     def __init__(self, base: Dataset[T_co], imageSize: int, sensorSize: int, channels: int, *args,
-                 dropChance: float = 0.5,
+                 dropChance: float = 0.5, cleanChance: float = 0,
                  **kwargs):
         super().__init__(base, imageSize, sensorSize, channels, *args, **kwargs)
         assert 0 < dropChance < 1, "Drop chance must be a percentage between 0 and 1"
 
         self.dropChances = torch.tensor([dropChance] * self.totalBlocks, dtype=torch.float)
+        self.cleanChance = cleanChance
+
+        if cleanChance > 0:
+            self.none = torch.zeros((self.channels, self.imageSize, self.imageSize), dtype=torch.bool)
 
     @override
     def _getFeaturesToDrop(self, item) -> Tensor:
+        if self.cleanChance > 0 and torch.rand((), generator=self.rand) < self.cleanChance:
+            return self.none
         return self.blocksToImage(torch.bernoulli(self.dropChances, generator=self.rand).to(torch.bool))
 
 def createMask(meta: Optional[DatasetMeta], name: str, image_size: int = None, channels: int = None) -> Tensor:
