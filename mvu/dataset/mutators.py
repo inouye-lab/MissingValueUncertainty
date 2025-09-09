@@ -237,6 +237,31 @@ class BlockRemovingDataset(MaskedDataset, ABC):
         pass
 
 
+class FixedBlockRemovingDataset(BlockRemovingDataset):
+    _dropIndices: Tensor
+    """Indices to drop"""
+    _dropFeatures: Tensor
+    """Features to drop"""
+
+    def __init__(self, base: Dataset[T_co], imageSize: int, sensorSize: int, channels: int, dropIndices: Tensor, *args, **kwargs):
+        super().__init__(base, imageSize, sensorSize, channels, *args, **kwargs)
+        self._dropIndices = dropIndices
+        self._dropFeatures = self.blocksToImage(dropIndices)
+
+    @property
+    def dropIndices(self) -> Tensor:
+        return self._dropIndices
+
+    @dropIndices.setter
+    def dropIndices(self, drop: Tensor) -> None:
+        self._dropIndices = drop
+        self._dropFeatures = self.blocksToImage(drop)
+
+    @override
+    def _getFeaturesToDrop(self, item) -> Tensor:
+        return self._dropFeatures
+
+
 class BlockCountRemovingDataset(BlockRemovingDataset):
     """Block removing dataset that removes blocks with a uniform sampled count"""
 
