@@ -50,8 +50,14 @@ class StarCraftDataset(Dataset[Tuple[Tensor, Tensor]]):
 def _createDataset(path: str, train: bool, transform: callable, image_format: str = 'bag-of-units-first', image_size: int = 64,
                   targets: Union[str, List[str]] = None) -> Dataset:
     if image_format == "cifar10":
-        assert targets is not None, "StartCraft CIFAR10 does not support targets"
         return StarCraftCIFAR10(
+            root=path,
+            train=train,
+            download=True,
+            transform=transform
+        )
+    elif image_format == "mnist":
+        return StarCraftMNIST(
             root=path,
             train=train,
             download=True,
@@ -85,7 +91,7 @@ def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = No
 
     # ensure targets is always a list
     if targets is None:
-        if image_format == "cifar10":
+        if image_format == "cifar10" or image_format == "mnist":
             targets = [f"{map} at {time}" for (map, time) in StarCraftMNIST.classes]
         else:
             targets = []
@@ -97,11 +103,19 @@ def createStarCraftDataset(path: str = None, targets: Union[str, List[str]] = No
     logging.info(f"Using {len(targets)} StarCraft targets: {targets}")
 
     # create metadata using
-    # TODO: can we reasonably support other image formats? for now hardcoding to 'bag-of-units-first'
-    meta = ImageDatasetMeta("starcraft", targets, image_size, sensor_size, 3)
+    # TODO: can we reasonably support other image formats for StarCraftImage? for now hardcoding to 'bag-of-units-first'
+    channels = 1 if image_format == "mnist" else 3
+    meta = ImageDatasetMeta("starcraft", targets, image_size, sensor_size, channels)
 
     # find transform
-    transformFunc = getTransform(image_size, 32 if image_format == "cifar10" else 64, normalization=normalization, **kwargs)
+    original_size: int
+    if image_format == "cifar10":
+        original_size = 32
+    elif image_format == "mnist":
+        original_size = 24
+    else:
+        original_size = 64
+    transformFunc = getTransform(image_size, original_size, normalization=normalization, channels=channels, **kwargs)
 
     # we only have train and test for starcraft, so split train into train and validation by percent
     # TODO: consider supporting seeded randomizing the split indices? prevent bias due to ordering in the set

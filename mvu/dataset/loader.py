@@ -1,6 +1,6 @@
 import logging
 
-from mvu.dataset.specialized.baselines import createCIFAR10Dataset
+from mvu.dataset.specialized.baselines import createCIFAR10Dataset, createMNISTDataset
 from .csv import CsvDatasetSplits
 from .specialized.celeba import createCelebADataset
 from .specialized.imagenet import createImageNetDataset
@@ -20,6 +20,9 @@ def getDatasetSplits(name: str, path: str = None, **kwargs) -> TorchDatasetSplit
     if name == "cifar10":
         logging.info(f"Loading CIFAR10 dataset from {path}")
         return createCIFAR10Dataset(path=path, **kwargs)
+    if name == "mnist":
+        logging.info(f"Loading MNIST dataset from {path}")
+        return createMNISTDataset(path=path, **kwargs)
     if name == "starcraft":
         logging.info(f"Loading StarCraft dataset from {path}")
         return createStarCraftDataset(path=path, **kwargs)
