@@ -252,7 +252,7 @@ if __name__ == '__main__':
             validationError = Regressor.evaluateData(validateLoader, batchHandler)
             validationErrorMean = validationError.mean().item()
             if validationErrorMean > validationBest:
-                logging.info(f"Worsening on valid {validationErrorMean} > prev best {validationBest}")
+                logging.info(f"Worsening on valid {validationErrorMean} > prev best {validationBest}, patience {validationFails} / {args.patience}")
                 if validationFails >= args.patience:
                     logging.info(f"Exceeding patience {args.patience}, stopping training")
                     break

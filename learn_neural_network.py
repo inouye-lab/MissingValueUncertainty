@@ -9,10 +9,10 @@ import torch
 from torch import Tensor, Generator
 from torch.utils.data import DataLoader
 
-from mvu.model.loss import createLoss
 from mvu.dataset.loader import getDatasetSplits
 from mvu.logger import setupLogging
 from mvu.model.loader import createRegressorFromJson
+from mvu.model.loss import createLoss
 from mvu.model.regressor import NeuralNetworkRegressor
 from mvu.util import jsonOrString, selectDevice, getOptimizer, jsonOrName, getScheduler
 
@@ -161,7 +161,7 @@ if __name__ == '__main__':
                 validationError = model.evaluateDataloader(validateLoader, device, lossFunction)
                 validationErrorMean = validationError.mean().item()
                 if validationErrorMean > validationBest:
-                    logging.info(f"Worsening on valid {validationErrorMean} > prev best {validationBest}")
+                    logging.info(f"Worsening on valid {validationErrorMean} > prev best {validationBest}, patience {validationFails} / {args.patience}")
                     if validationFails >= args.patience:
                         logging.info(f"Exceeding patience {args.patience}, stopping training")
                         break
