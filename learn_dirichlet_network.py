@@ -213,10 +213,14 @@ if __name__ == '__main__':
             optimizer.zero_grad()
 
             maskedPrediction = model.predictWithGradient(maskedFeatures)
-            if args.teacher is None:
-                cleanPrediction = model.predictWithGradient(cleanFeatures)
+            if args.clean_weight > 0 or args.dirichlet_weight > 0:
+                if args.teacher is None:
+                    cleanPrediction = model.predictWithGradient(cleanFeatures)
+                else:
+                    cleanPrediction = teacher.predict(cleanFeatures)
             else:
-                cleanPrediction = teacher.predict(cleanFeatures)
+                # if we aren't going to use clean, save some effort by just reusing the masked prediction
+                cleanPrediction = torch.ones_like(maskedPrediction)
             loss: Tensor = lossFunction(cleanPrediction, maskedPrediction, targets)
             loss.backward()
             optimizer.step()
