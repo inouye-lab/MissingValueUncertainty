@@ -1,4 +1,3 @@
-import json
 import logging
 from typing import List, Union, Dict
 
@@ -7,19 +6,25 @@ from torch.nn import Linear, ReLU, Flatten, Sequential, Module
 from .diffusion import GaussianDiffusionBatchGenerator
 from .generator import BatchGenerator
 from .regressor import NeuralNetworkRegressor
-from .specialized.resnet import Resnet18Classifier, Resnet18Dirichlet, Resnet18DirichletStrength
 from .specialized.image import ImageRegressor
+from .specialized.resnet import Resnet18Classifier, Resnet18Dirichlet, Resnet18DirichletStrength
 from ..dataset.meta import ImageDatasetMeta
 from ..dataset.torch_utils import TorchDatasetSplits
 
-def _ensureNumClassesSet(name: str, ds: TorchDatasetSplits, kwargs: Dict):
-        # if not set, use the dataset for info on number of classes
+
+def _ensureDatasetInfoSet(name: str, ds: TorchDatasetSplits, kwargs: Dict):
+    # if not set, use the dataset for info on number of classes and channels
     if "num_classes" not in kwargs:
         if isinstance(ds.metadata.target, list):
             kwargs["num_classes"] = len(ds.metadata.target)
         else:
             kwargs["num_classes"] = 1
-    logging.info(f"Constructing {name} with {kwargs['num_classes']} targets")
+    if "num_channels" not in kwargs:
+        if isinstance(ds.metadata, ImageDatasetMeta):
+            kwargs["num_channels"] = ds.metadata.channels
+        else:
+            kwargs["num_channels"] = 3
+    logging.info(f"Constructing {name} with {kwargs['num_classes']} targets and {kwargs['num_channels']} channels")
 
 def createRegressor(ds: TorchDatasetSplits, name, original: NeuralNetworkRegressor = None, **kwargs) -> NeuralNetworkRegressor:
     """
@@ -41,11 +46,11 @@ def createRegressor(ds: TorchDatasetSplits, name, original: NeuralNetworkRegress
             raise ValueError("image-regression requires the dataset metadata to also be image metadata")
     elif name == "resnet":
         logging.info(f"Using Resnet18 architecture with {kwargs}")
-        _ensureNumClassesSet("ResNet", ds, kwargs)
+        _ensureDatasetInfoSet("ResNet", ds, kwargs)
         return NeuralNetworkRegressor(Resnet18Classifier(**kwargs))
     elif name == "resnet_dirichlet":
         logging.info(f"Using Resnet18 DMV architecture with {kwargs}")
-        _ensureNumClassesSet("ResNet Dirichlet", ds, kwargs)
+        _ensureDatasetInfoSet("ResNet Dirichlet", ds, kwargs)
         return NeuralNetworkRegressor(Resnet18Dirichlet(**kwargs))
     elif name == "copy_resnet_dirichlet":
         logging.info(f"Copying to create Resnet18 DMV architecture with {kwargs}")
@@ -53,7 +58,7 @@ def createRegressor(ds: TorchDatasetSplits, name, original: NeuralNetworkRegress
         assert isinstance(original.nn, Resnet18Classifier), "Copy resnet requires a resnet classifier to start"
         return NeuralNetworkRegressor(Resnet18Dirichlet.fromResnet(original.nn, **kwargs))
     elif name == "resnet_dirichlet_strength":
-        _ensureNumClassesSet("ResNet Dirichlet Strength", ds, kwargs)
+        _ensureDatasetInfoSet("ResNet Dirichlet Strength", ds, kwargs)
         return NeuralNetworkRegressor(Resnet18DirichletStrength(**kwargs))
     elif name == "simple_fully_connected":
         lastSize = ds.metadata.numInputs

@@ -25,6 +25,7 @@ class Resnet18Classifier(Module):
 
     def __init__(self, num_classes: int, momentum: float = None, track_running_stats: bool = None,
                  pretrained_weights: bool = True, activation: str = "sigmoid", keep_final_layer: bool = False,
+                 num_channels: int = 3, copy_input_weights: bool = True,
                  resnet: resnet18 = None):
         """
         Creates a new instance of the classifier
@@ -60,6 +61,8 @@ class Resnet18Classifier(Module):
         else:
             logging.info(f"Replacing final layer in Resnet for {num_classes} classes")
             self.resnet.fc = nn.Linear(self.resnet.fc.in_features, num_classes)
+        if num_channels != 3 or not copy_input_weights:
+            self.resnet.conv1 = _createResnetConv2dWithChannels(self.resnet.conv1, num_channels, copyWeights=copy_input_weights)
         if activation == "sigmoid":
             self.activation = nn.Sigmoid()
         elif activation == "identity":
@@ -79,12 +82,18 @@ class Resnet18Classifier(Module):
         return features
 
 
-def _createResnetConv2dWithMissing(original: Conv2d, copyWeights: bool = False):
-    layer = Conv2d(4, 64, kernel_size=7, stride=2, padding=3, bias=False)
+def _createResnetConv2dWithChannels(original: Conv2d, channels: int, copyWeights: bool = False):
+    layer = Conv2d(channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
     if copyWeights:
         logging.info("Copying original first layer weights for Resnet DMV")
-        layer.weight.data[:,0:3,:,:] = original.weight.data.clone()
-        layer.weight.data[:,3,:,:] = 0
+        # if we have fewer than 3 target channels, then copy just the number that fit
+        if channels < 3:
+            layer.weight.data[:,0:channels,:,:] = original.weight.data[:,0:channels,:,:].clone()
+        else:
+            # with 3 or more, copy the full list and 0 out anything remaining
+            layer.weight.data[:,0:3,:,:] = original.weight.data.clone()
+            if channels > 3:
+                layer.weight.data[:,3:channels,:,:] = 0
     else:
         logging.info("Using randomized first layer weights for Resnet DMV")
     return layer
@@ -101,10 +110,9 @@ class Resnet18Dirichlet(Resnet18Classifier):
     """
     Resnet structure that inputs a 4 channel image (with missingness) and outputs a strength vector
     """
-    def __init__(self, num_classes: int, minStrength: float = 1e-35, activation: str = "softplus", copy_input_weights: bool = False, *args, **kwargs):
-        super().__init__(_flattenSingleClass(num_classes), *args, activation=activation, **kwargs)
-        # swap out first layer for one with 4 channels, 4th is missing
-        self.resnet.conv1 = _createResnetConv2dWithMissing(self.resnet.conv1, copyWeights=copy_input_weights)
+    def __init__(self, num_classes: int, minStrength: float = 1e-35, activation: str = "softplus", copy_input_weights: bool = False, num_channels: int = 3, *args, **kwargs):
+        # add 1 channel for the missing layer to the input space. Default to not copying input weights
+        super().__init__(_flattenSingleClass(num_classes), *args, copy_input_weights=copy_input_weights, num_channels=num_channels+1, activation=activation, **kwargs)
         self.minStrength = minStrength
 
     def forward(self, features: Tensor):
