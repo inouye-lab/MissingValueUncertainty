@@ -100,7 +100,7 @@ class DirichletLoss(DistributionLoss):
         """
         # with just 1 value, our loss function likely expects size 1 tensors
         # but the Dirchlet distribution wants size 2 tensors, so convert as needed
-        maskedProbability = safeNormalize(maskedResult) if self.maskedWeight > 0 else None
+        maskedProbability = safeNormalize(maskedResult.clone()) if self.maskedWeight > 0 else None
         cleanProbability: Tensor
         if cleanResult.shape[1] == 1:
             cleanProbability = cleanResult
