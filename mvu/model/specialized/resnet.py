@@ -67,6 +67,8 @@ class Resnet18Classifier(Module):
             self.activation = nn.Sigmoid()
         elif activation == "identity":
             self.activation = nn.Identity()
+        elif activation == "softmax":
+            self.activation = nn.Softmax(dim=1)
         elif activation == "softplus":
             self.activation = nn.Softplus()
         elif activation == "exp":
