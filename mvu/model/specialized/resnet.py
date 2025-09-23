@@ -101,9 +101,9 @@ def _createResnetConv2dWithChannels(original: Conv2d, channels: int, copyWeights
     return layer
 
 
-def _flattenSingleClass(num_classes: int) -> int:
+def _flattenSingleClass(num_classes: int, flatten_single_class: bool) -> int:
     """Converts a single class into two classes as needed"""
-    if num_classes == 1:
+    if flatten_single_class and num_classes == 1:
         return 2
     return num_classes
 
@@ -112,9 +112,9 @@ class Resnet18Dirichlet(Resnet18Classifier):
     """
     Resnet structure that inputs a 4 channel image (with missingness) and outputs a strength vector
     """
-    def __init__(self, num_classes: int, minStrength: float = 1e-35, activation: str = "softplus", copy_input_weights: bool = False, num_channels: int = 3, *args, **kwargs):
+    def __init__(self, num_classes: int, minStrength: float = 1e-35, activation: str = "softplus", copy_input_weights: bool = False, num_channels: int = 3, flatten_single_class: bool = True, *args, **kwargs):
         # add 1 channel for the missing layer to the input space. Default to not copying input weights
-        super().__init__(_flattenSingleClass(num_classes), *args, copy_input_weights=copy_input_weights, num_channels=num_channels+1, activation=activation, **kwargs)
+        super().__init__(_flattenSingleClass(num_classes, flatten_single_class), *args, copy_input_weights=copy_input_weights, num_channels=num_channels+1, activation=activation, **kwargs)
         self.minStrength = minStrength
 
     def forward(self, features: Tensor):
@@ -138,7 +138,7 @@ class Resnet18DirichletStrength(Resnet18Classifier):
     Resnet structure that inputs a 4 channel image (with missingness) and outputs a probability vector plus strength.
     """
     def __init__(self, num_classes: int, minStrength: float = 1e-35, copy_input_weights: bool = False, *args, **kwargs):
-        self.numClasses = _flattenSingleClass(num_classes)
+        self.numClasses = _flattenSingleClass(num_classes, flatten_single_class)
         # added an extra 1 class for the final fully connected layer
         super().__init__(self.numClasses + 1, *args, **kwargs)
         # swap out first layer for one with 4 channels, 4th is missing
