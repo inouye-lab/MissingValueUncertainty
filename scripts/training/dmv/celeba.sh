@@ -2,14 +2,14 @@
 
 # Print usage if unspecified
 if [ $# -le 1 ]; then
-  echo "Expected arguments: <feature> <model> [cuda]"
+  echo "Expected arguments: <feature> <model> <cuda> [activation]"
   exit 1
 fi
 
 feature=$1
 model=$2
 cuda=$3
-activation=$4
+activation=${4:-exp}
 shift
 shift
 shift

@@ -2,13 +2,13 @@
 
 # Print usage if unspecified
 if [ $# -le 1 ]; then
-  echo "Expected arguments: <model> <cuda> <activation>"
+  echo "Expected arguments: <model> <cuda> [activation]"
   exit 1
 fi
 
 model=$1
 cuda=$2
-activation=$3
+activation=${3:-exp}
 shift $#
 
 source ../../miniconda/bin/activate

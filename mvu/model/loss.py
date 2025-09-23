@@ -5,7 +5,7 @@ from overrides import override
 from torch import Tensor
 from torch.distributions import Distribution, Dirichlet
 from torch.nn import Module, CrossEntropyLoss, BCELoss, BCEWithLogitsLoss, MSELoss
-from torch.nn.functional import normalize
+from torch.nn.functional import normalize, softmax, sigmoid
 
 
 class CrossEntropyProbabilityLoss(CrossEntropyLoss):
@@ -83,7 +83,7 @@ class DirichletLoss(DistributionLoss):
     """
     Implementation of `DistributionLoss` for a Dirichlet distribution.
 
-    Typically used with BCELoss.
+    Typically used with CrossEntropyProbabilityLoss.
     """
     def __init__(self, maskedWeight: float, distWeight: float, cleanWeight: float = 1.0,
                  cleanLoss: Module = None, reduction: str = "mean"):
@@ -93,8 +93,8 @@ class DirichletLoss(DistributionLoss):
     def forward(self, cleanResult: Tensor, maskedResult: Tensor, target: Tensor):
         """
         Runs the forward pass for this loss function
-        :param cleanResult:   Result of the clean image through the neural network as strengths
-        :param maskedResult:  Result of the masked image through the neural network as strengths
+        :param cleanResult:   Result of the clean image through the neural network as alpha values or probabilities
+        :param maskedResult:  Result of the masked image through the neural network as alpha values
         :param target:        Target class from the dataset
         :return:  Combined loss
         """
@@ -118,6 +118,44 @@ class DirichletLoss(DistributionLoss):
             cleanResult,
             target
         )
+
+
+class DirichletLogitLoss(DistributionLoss):
+    """
+    Implementation of `DistributionLoss` for a model outputting logits of a dirichlet distribution.
+
+    Typically used with CrossEntropyLoss.
+    """
+    def __init__(self, maskedWeight: float, distWeight: float, cleanWeight: float = 1.0,
+                 cleanLoss: Module = None, reduction: str = "mean"):
+        super().__init__(cleanLoss if cleanLoss is not None else CrossEntropyLoss(), Dirichlet,
+                         maskedWeight, distWeight, cleanWeight, reduction)
+
+    def forward(self, cleanResult: Tensor, maskedResult: Tensor, target: Tensor):
+        """
+        Runs the forward pass for this loss function
+        :param cleanResult:   Result of the clean image through the neural network as logits
+        :param maskedResult:  Result of the masked image through the neural network as logits
+        :param target:        Target class from the dataset
+        :return:  Combined loss
+        """
+        cleanProbability: Tensor
+        # clean result should be probabilities, so run sigmoid/softmax, though can't do softmax with just 1 feature
+        if cleanResult.shape[1] == 1:
+            cleanProbability = sigmoid(cleanResult)
+            cleanProbability = torch.cat((1 - cleanProbability, cleanProbability), dim=1)
+        else:
+            cleanProbability = softmax(cleanResult, dim=1)
+
+        return self._forward(
+            cleanResult,
+            maskedResult,
+            # parameters are expected to be alpha values, so need to run the exp activation
+            (torch.exp(maskedResult),),
+            cleanProbability,
+            target
+        )
+
 
 
 class DirichletStrengthLoss(DistributionLoss):

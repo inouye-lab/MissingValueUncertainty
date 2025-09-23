@@ -17,7 +17,7 @@ from mvu.dataset.mutators import IncludeMask, randomDropping, MaskedDataset
 from mvu.dataset.mutators import createMask, RandomMaskedDataset, distributeMasks
 from mvu.logger import setupLogging
 from mvu.model.loader import createRegressorFromJson
-from mvu.model.loss import DirichletLoss, DirichletStrengthLogitLoss
+from mvu.model.loss import DirichletLoss, DirichletStrengthLogitLoss, DirichletLogitLoss
 from mvu.model.regressor import NeuralNetworkRegressor, Regressor
 from mvu.model.specialized.resnet import Resnet18DirichletStrength
 from mvu.util import jsonOrString, selectDevice, jsonOrName, getOptimizer, getScheduler
@@ -61,6 +61,8 @@ if __name__ == '__main__':
                         help='Weight for the dirichlet loss term')
     parser.add_argument('--clean_weight', type=float, default=1,
                         help='Weight for the clean loss term')
+    parser.add_argument('--use_logits', action='store_true',
+                        help='If true, uses the logit variant of the loss function. Expected to run the model with no activation function')
 
     # model parameters
     parser.add_argument("--input", type=str, default=None, help='Input model to continue training')
@@ -93,10 +95,11 @@ if __name__ == '__main__':
         teacher.to(device)
         teacher.nn.eval()
         # TODO: is there a way to not hardcode this?
-        if len(ds.metadata.labels) == 1:
-            teacher.activation = nn.Sigmoid()
-        else:
-            teacher.activation = nn.Softmax(dim=1)
+        if not args.use_logits:
+            if len(ds.metadata.labels) == 1:
+                teacher.activation = nn.Sigmoid()
+            else:
+                teacher.activation = nn.Softmax(dim=1)
 
     # construct model
     logging.info("Constructing neural network")
@@ -125,6 +128,8 @@ if __name__ == '__main__':
     if isinstance(model.nn, Resnet18DirichletStrength):
         lossFunction = DirichletStrengthLogitLoss(args.masked_weight, args.dirichlet_weight, cleanWeight=args.clean_weight)
         model.nn.activation = Identity()
+    elif args.use_logits:
+        lossFunction = DirichletLogitLoss(args.masked_weight, args.dirichlet_weight, cleanWeight=args.clean_weight)
     else:
         lossFunction = DirichletLoss(args.masked_weight, args.dirichlet_weight, cleanWeight=args.clean_weight)
 
