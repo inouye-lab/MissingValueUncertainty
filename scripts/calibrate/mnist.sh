@@ -18,6 +18,6 @@ python calibrate_dataset.py mnist --output ./results/calibration/mnist/ \
     --classifier "./models/mnist/mnist-$model.pklz" \
     --cuda_index $cuda --drop block-dropout \
     --calibration_scales 0.1 0.25 0.5 0.75 1 2.5 5 7.5 10 \
-    --beta_variance_scales 0.5 --probability_scales 1 --imputators "./models/mean/mnist.pklz" \
+    --beta_variance_scales 0.5 --probability_scales 1 2.5 5 7.5 10 25 50 75 100 --imputators "./models/mean/mnist.pklz" \
     --action_spaces zero-one \
     --threads 4 --trials 4

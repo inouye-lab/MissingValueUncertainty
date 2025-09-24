@@ -18,6 +18,6 @@ python calibrate_dataset.py cifar10 --output ./results/calibration/cifar10/ \
     --classifier "./models/cifar10/cifar10-$model.pklz" \
     --cuda_index $cuda --drop block-dropout \
     --calibration_scales 0.1 0.25 0.5 0.75 1 2.5 5 7.5 10 \
-    --beta_variance_scales 0.5 --probability_scales 1 --imputators "./models/mean/cifar10.pklz" \
+    --beta_variance_scales 0.5 --probability_scales 1 2.5 5 7.5 10 25 50 75 100 --imputators "./models/mean/cifar10.pklz" \
     --action_spaces zero-one \
     --threads 4 --trials 4
