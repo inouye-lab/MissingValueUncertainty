@@ -22,7 +22,7 @@ conda activate ./venv
 
 python calibrate_dataset.py starcraft --output ./results/calibration/starcraft/ \
     --dataset '{ "path": "../../datasets/starcraftimage", "image_format": "cifar10", "image_size": 224, "sensor_size": 56 }' \
-    --classifier "./models/dirichlet-starcraft-cifar10/starcraft-$model.pklz" \
+    --classifier "./models/dirichlet-starcraft-cifar10/starcraft-$model.pklz" --dmv_classifier \
     --calibration_scales 0.1 0.25 0.5 0.75 1 2.5 5 7.5 10 \
     --cuda_index $cuda --drop block-dropout $all \
     --action_spaces zero-one \

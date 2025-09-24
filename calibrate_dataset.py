@@ -14,12 +14,12 @@ from mvu.dataset.mutators import SpecificFeatureRemovingDataset, createMask, Inc
 from mvu.dataset.specialized.celeba import CelebADataset
 from mvu.explanation.actions import createActionSpaceExpectation
 from mvu.explanation.calibration import CalibrationScaleExperiment
-from mvu.explanation.decision import DecisionMaker
+from mvu.explanation.decision import DecisionMaker, DiscardingMaskDecisionMaker, ScaleProbabilityDecisionMaker
 from mvu.explanation.dirichlet import DirichletDecisionMaker, DirichletClassifier
 from mvu.explanation.moments import MethodOfMomentsDecisionMaker
 from mvu.logger import setupLogging
 from mvu.model.generator import CachingBatchGenerator, BatchMeanImputator, BatchGenerator
-from mvu.model.imputator import ZeroImputator, Imputator
+from mvu.model.imputator import ZeroImputator, Imputator, SerializableImputator
 from mvu.model.method import MonteCarloBatchMethod, BasicCombinationMethod, ScaleMaxBetaVarianceMethod, Method, \
     DiscardingMaskMethod
 from mvu.model.regressor import Regressor, NeuralNetworkRegressor
@@ -36,6 +36,8 @@ if __name__ == '__main__':
     parser.add_argument("--output", type=str, default="./results/", help='Location to save result CSV')
 
     parser.add_argument("--classifier", type=str, help='Path to the pretrained regressor to load')
+    parser.add_argument("--dmv_classifier",  action='store_true',
+                        help='If set, treats the classifier outputs as alpha values instead of probabilities, using the DMV approximation')
     parser.add_argument("--classifier_feature", type=str, default=None,
                         help='Feature index from the regressor to use, if -1 uses all features')
 
@@ -55,10 +57,14 @@ if __name__ == '__main__':
     # baseline options
     parser.add_argument("--zero_imputation", action='store_true',
                         help="If true, includes zero imputation.")
+    parser.add_argument("--imputators", type=str, nargs='*', default=[],
+                        help="If set, adds additional imputators loaded from the specified paths.")
     parser.add_argument("--zero_variance", action='store_true',
                         help="If true, includes zero variance.")
     parser.add_argument("--beta_variance_scales", type=float, nargs='*', default=[],
                         help="Scales of the beta variance to try for basic imputation.")
+    parser.add_argument("--probability_scales", type=float, nargs='*', default=[],
+                        help="Scales of the probability to produce alpha values for basic imputation.")
 
     # calibration options
     parser.add_argument("--calibration_scales", type=float, nargs='*', default=[],
@@ -123,12 +129,11 @@ if __name__ == '__main__':
     # if we have a dirichlet classifier, add the dirichlet decision maker
     includeMask: IncludeMask = IncludeMask.NONE
     if isinstance(classifier, NeuralNetworkRegressor):
-        if isinstance(classifier.nn, Resnet18Dirichlet):
+        if args.dmv_classifier:
             logging.info(f"Including Dirichlet decision maker")
             classifier.activation = None
             decisionMakers.extend(DirichletDecisionMaker(classifier, args.decision_samples, scale=scale) for scale in args.calibration_scales)
-            includeMask = IncludeMask.MISSING
-            # substitute the classifier for the remaining methods with one that convert to mean
+            # substitute the classifier for the remaining methods with one that can handle missing masks
             classifier = DirichletClassifier.fromRegressor(classifier, num_classes=classCount, expected_mask_size=ds.metadata.channels + 1)
         elif classCount == 1:
             logging.info(f"Setting classifier activation function to sigmoid for single class")
@@ -137,6 +142,10 @@ if __name__ == '__main__':
             logging.info(f"Setting classifier activation function to softmax for multiclass")
             # TODO: will it always be true that we wish to set the activation function like this? maybe it should be set at a nn level
             classifier.activation = nn.Softmax(dim=1)
+
+        # set the proper mask type
+        if isinstance(classifier.nn, Resnet18Dirichlet):
+            includeMask = IncludeMask.MISSING
 
     # methods
     methods: List[Method] = []
@@ -162,6 +171,14 @@ if __name__ == '__main__':
             logging.info("Including baseline imputators with zero imputation.")
             imputators.append(ZeroImputator())
 
+        # add serialized imputators
+        for path in args.imputators:
+            logging.info(f"Loading imputator from {path}")
+            imputator = SerializableImputator.load(path)
+            logging.info(f"Found {imputator.name}")
+            imputator.to(device)
+            imputators.append(imputator)
+
         # add batch imputator if requested
         if generator is not None and len(args.batch_mean_imputation) > 0:
             logging.info(f"Including batch mean imputators with sizes {args.batch_mean_imputation}.")
@@ -180,11 +197,24 @@ if __name__ == '__main__':
             for scale in args.beta_variance_scales:
                 methods.append(ScaleMaxBetaVarianceMethod(classifier, imputator, scale))
 
+        # add methods for probability scales
+        if len(args.probability_scales) > 0:
+            if args.dmv_classifier:
+                logging.info(f"Adding {len(imputators)} imputators with discarded masks for probability scales {args.probability_scales}.")
+                # if we have a mask, strip it from all methods
+                maskKeep = torch.arange(0, ds.metadata.channels, device=device)
+                decisionMakers.extend(DiscardingMaskDecisionMaker(ScaleProbabilityDecisionMaker(classifier, imputator, args.decision_samples, scale), maskKeep)
+                                      for scale in args.probability_scales for imputator in imputators)
+            else:
+                logging.info(f"Adding {len(imputators)} for probability scales {args.probability_scales}.")
+                decisionMakers.extend(ScaleProbabilityDecisionMaker(classifier, imputator, args.decision_samples, scale)
+                                      for scale in args.probability_scales for imputator in imputators)
+
     # map all additional methods to decision makers
-    if includeMask != IncludeMask.NONE:
+    if args.dmv_classifier and includeMask != IncludeMask.NONE:
         logging.info(f"Adding {len(methods)} methods with discarded masks.")
         # if we have a mask, strip it from all methods
-        maskKeep = torch.arange(0, 3, device=device)
+        maskKeep = torch.arange(0, ds.metadata.channels, device=device)
         decisionMakers.extend(MethodOfMomentsDecisionMaker(DiscardingMaskMethod(method, maskKeep), args.decision_samples, scale=scale_val) for scale_val in args.calibration_scales for method in methods)
     else:
         logging.info(f"Adding {len(methods)} methods.")

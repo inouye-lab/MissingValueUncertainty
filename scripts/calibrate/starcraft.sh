@@ -18,6 +18,6 @@ python calibrate_dataset.py starcraft --output ./results/calibration/starcraft/ 
     --classifier "./models/starcraft-cifar10/starcraft-$model.pklz" \
     --cuda_index $cuda --drop block-dropout \
     --calibration_scales 0.1 0.25 0.5 0.75 1 2.5 5 7.5 10 \
-    --beta_variance_scales 0.5 0.99 --zero_imputation \
+    --beta_variance_scales 0.5 --probability_scales 10 --imputators "./models/mean/starcraft.pklz" \
     --action_spaces zero-one \
     --threads 4 --trials 4

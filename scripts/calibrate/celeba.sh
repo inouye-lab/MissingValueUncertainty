@@ -27,10 +27,6 @@ python calibrate_dataset.py celeba --output ./results/calibration/celeba/$featur
     --cuda_index $cuda --mask $mask --calibration_scales 0.1 0.25 0.5 0.75 1 2.5 5 7.5 10 \
     --cache_directory "../../datasets/CelebAMask/cache/256/${mask}_validation" \
     --generator_samples 3 30 \
-    --beta_variance_scales 0.5 0.99 --zero_imputation --batch_mean_imputation 1 \
-    --action_spaces '{"name": "binary", "parameter": 0.1}' \
-    '{"name": "binary", "parameter": 0.2}' '{"name": "binary", "parameter": 0.3}' \
-    '{"name": "binary", "parameter": 0.4}' '{"name": "binary", "parameter": 0.5}' \
-    '{"name": "binary", "parameter": 0.6}' '{"name": "binary", "parameter": 0.7}' \
-    '{"name": "binary", "parameter": 0.8}' '{"name": "binary", "parameter": 0.9}' \
+    --beta_variance_scales 0.5 --probability_scales 10 --imputators "./models/mean/celeba.pklz" --batch_mean_imputation 1 \
+    --action_spaces zero-one \
     --threads 4 --trials 4

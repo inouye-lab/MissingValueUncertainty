@@ -22,7 +22,7 @@ conda activate ./venv
 
 python calibrate_dataset.py cifar10 --output ./results/calibration/cifar10/ \
     --dataset '{ "path": "../../datasets/cifar10", "image_size": 224, "sensor_size": 56 }' \
-    --classifier "./models/dirichlet-cifar10/cifar10-$model.pklz" \
+    --classifier "./models/dirichlet-cifar10/cifar10-$model.pklz" --dmv_classifier \
     --calibration_scales 0.1 0.25 0.5 0.75 1 2.5 5 7.5 10 \
     --cuda_index $cuda --drop block-dropout $all \
     --action_spaces zero-one \

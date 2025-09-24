@@ -32,7 +32,7 @@ python calibrate_dataset.py celeba --output ./results/calibration/celeba/$featur
       "return_index": true,
       "targets": ["'$feature'"]
     }' \
-    --classifier "./models/dirichlet-celeba/$feature/celeba-$model.pklz" \
+    --classifier "./models/dirichlet-celeba/$feature/celeba-$model.pklz" --dmv_classifier \
     --calibration_scales 0.1 0.25 0.5 0.75 1 2.5 5 7.5 10 \
     --cuda_index $cuda --mask $mask $all \
     --action_spaces '{"name": "binary", "parameter": 0.1}' \
