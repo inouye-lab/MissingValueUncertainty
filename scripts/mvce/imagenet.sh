@@ -17,5 +17,5 @@ python mvce_dataset.py imagenet --output ./results/mvce-imagenet/ \
     --dataset '{ "path": "../../datasets/ImageNet", "sensor_size": 56 }' \
     --classifier "./models/imagenet/imagenet-$model.pklz" \
     --cuda_index $cuda --drop block-dropout \
-    --zero_variance --beta_variance_scales 0.5 0.99 --imputators "./models/mean/imagenet.pklz" \
+    --zero_variance --beta_variance_scales 0.5 --probability_scales 10 --imputators "./models/mean/imagenet.pklz" \
     --action_spaces zero-one --threads 4 --trials 4

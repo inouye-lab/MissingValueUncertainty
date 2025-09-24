@@ -23,5 +23,5 @@ python mvce_dataset.py mnist --output ./results/mvce-mnist/ \
     --dataset '{ "path": "../../datasets/mnist", "image_size": 224, "sensor_size": 56 }' \
     --classifier "./models/mnist/mnist-$model.pklz" \
     --cuda_index $cuda --drop block-dropout \
-    $zero_var $calibration --beta_variance_scales 0.5 0.99 --imputators "./models/mean/mnist.pklz" \
+    $zero_var $calibration --beta_variance_scales 0.5 --probability_scales 10 --imputators "./models/mean/mnist.pklz" \
     --action_spaces zero-one --threads 4 --trials 4

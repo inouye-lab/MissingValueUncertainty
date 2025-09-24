@@ -23,5 +23,5 @@ python mvce_dataset.py starcraft --output ./results/mvce-starcraft/ \
     --dataset '{ "path": "../../datasets/starcraftimage", "image_format": "cifar10", "image_size": 224, "sensor_size": 56 }' \
     --classifier "./models/starcraft-cifar10/starcraft-$model.pklz" \
     --cuda_index $cuda --drop block-dropout \
-    $zero_var --beta_variance_scales 0.5 0.99 --imputators "./models/mean/starcraft.pklz" $calibration \
+    $zero_var --beta_variance_scales 0.5 --probability_scales 10 --imputators "./models/mean/starcraft.pklz" $calibration \
     --action_spaces zero-one --threads 4 --trials 4
