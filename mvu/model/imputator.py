@@ -1,4 +1,6 @@
+import logging
 from abc import ABC, abstractmethod
+from time import perf_counter
 from typing import Optional
 
 import torch
@@ -6,9 +8,11 @@ from overrides import override
 from pandas import DataFrame
 from statsmodels.imputation.mice import MICEData
 from torch import Tensor, Generator
+from torch.utils.data import DataLoader
 
 from .common import CachableModel, Namable
 from ..dataset.meta import validateFeatures, INDEX_SAMPLE, INDEX_FEATURE, DatasetMeta
+from ..serializer import SerializerMixin
 
 
 def containsMissing(features: Tensor) -> bool:
@@ -51,6 +55,13 @@ class Imputator(CachableModel, Namable, ABC):
         pass
 
 
+class SerializableImputator(Imputator, SerializerMixin, ABC):
+    """
+    Extension of Imputator that supports serialization. Used for learned imputators such as mean.
+    """
+    pass
+
+
 class ZeroImputator(Imputator):
     """
     Imputator that replaces all missing values with zero, provided mainly as a baseline.
@@ -67,7 +78,7 @@ class ZeroImputator(Imputator):
         features[torch.isnan(features)] = 0
 
 
-class ConstantImputator(Imputator):
+class ConstantImputator(SerializableImputator):
     """
     Imputator that replaces all missing values with a constant.
     """
@@ -93,6 +104,37 @@ class ConstantImputator(Imputator):
         validateFeatures(features, featureCount)
         for i in range(featureCount):
             features[torch.isnan(features[:, i]), i] = self.constant[i]
+
+    @classmethod
+    def meanFromDataloader(cls, data: DataLoader, showProgress: bool = False, device: torch.device = None) -> "ConstantImputator":
+        startTime = perf_counter()
+
+        # will figure out the shape of the mean after seeing the first sample
+        means: Optional[Tensor] = None
+        numSamples = 0
+
+        # iterate batches, finding the sum of all elements
+        batches = len(data)
+        for i, (features, targets) in enumerate(data):
+            features: Tensor
+            if device is not None:
+                features = features.to(device)
+
+            # if the mean is not yet started, start it with zeros
+            if means is None:
+                means = torch.zeros_like(features[0])
+                logging.info(f"Output shape: {means.shape}")
+
+            # print progress bar, will overwrite itself with each iteration
+            if showProgress:
+                print(f"Computing mean batch {i+1:10}/{batches}", end="\r")
+            means += features.sum(dim=0)
+            numSamples += features.shape[0]
+
+        # convert the sum into the final means
+        means /= numSamples
+        logging.info(f"Computed dataset mean in {perf_counter() - startTime} seconds")
+        return cls(means, name="Mean")
 
 
 class MiceImputator(Imputator):
