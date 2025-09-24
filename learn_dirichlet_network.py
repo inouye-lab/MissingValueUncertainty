@@ -163,6 +163,7 @@ if __name__ == '__main__':
         maskedValidation = randomDropping(ds.validate, ds.metadata, **commonMaskArgs, **args.drop)
 
     # setup data loading
+    # TODO: pinning memory on the masked datasets is likely to cache specific masks
     trainLoader    = DataLoader(maskedTraining,   batch_size=args.batch_size, shuffle=True,  generator=rand, pin_memory=True)
     validateLoader = DataLoader(maskedValidation, batch_size=args.batch_size, shuffle=False, generator=rand, pin_memory=True)
     cleanLoader    = DataLoader(cleanValidation,  batch_size=args.batch_size, shuffle=False, generator=rand, pin_memory=True)
