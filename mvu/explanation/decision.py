@@ -3,9 +3,8 @@ from typing import Tuple, Union, List
 
 import torch
 from overrides import override
-from sympy.stats import Dirichlet
 from torch import Tensor, Generator
-from torch.distributions import Distribution
+from torch.distributions import Distribution, Dirichlet
 
 from mvu.model.common import CachableModel, Namable
 from mvu.model.imputator import Imputator
