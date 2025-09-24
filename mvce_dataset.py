@@ -136,7 +136,7 @@ if __name__ == '__main__':
             decisionMakers.append(DirichletDecisionMaker(classifier, args.decision_samples, scale=method_to_scale["Dirichlet Network"] if method_to_scale else 1))
             includeMask = IncludeMask.MISSING
             # substitute the classifier for the remaining methods with one that convert to mean
-            classifier = DirichletClassifier.fromRegressor(classifier, num_classes=classCount)
+            classifier = DirichletClassifier.fromRegressor(classifier, num_classes=classCount, expected_mask_size=ds.metadata.channels + 1)
         elif classCount == 1:
             logging.info(f"Setting classifier activation function to sigmoid for single class")
             classifier.activation = nn.Sigmoid()

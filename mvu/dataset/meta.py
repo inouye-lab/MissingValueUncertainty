@@ -41,6 +41,9 @@ class DatasetMeta(object):
     labels: List[str]
     """List of labels for each feature index"""
 
+    channels: int
+    """number of image channels"""
+
     groups: Optional[Tensor]
     """
     Group indexes for categorical features. Ranges from 0 to N-1 where N is the number of distinct features.
@@ -53,10 +56,11 @@ class DatasetMeta(object):
     _featureWeights: Optional[torch.Tensor]
     """Feature weights for random feature drops"""
 
-    def __init__(self, name: str, target: Union[str, List[str]], labels: List[str], groups: Optional[Tensor]):
+    def __init__(self, name: str, target: Union[str, List[str]], labels: List[str], groups: Optional[Tensor], channels: int = 1):
         assert groups is None or len(groups) == len(labels), "Labels and groups must be the same size"
         self.name = name
         self.target = target
+        self.channels = channels
         self.labels = labels
         self.groups = groups
         self._numGroups = None
@@ -280,14 +284,10 @@ class ImageDatasetMeta(DatasetMeta):
     sensorSize: int
     """Size of the sensors on the image"""
 
-    channels: int
-    """Size of the sensors on the image"""
-
     def __init__(self, name: str, target: List[str], imageSize: int, sensorSize: int, channels: int = 1):
-        super().__init__(name, target, createImageLabels(imageSize, channels), createImageGroups(imageSize, sensorSize, channels))
+        super().__init__(name, target, createImageLabels(imageSize, channels), createImageGroups(imageSize, sensorSize, channels), channels=channels)
         self.imageSize = imageSize
         self.sensorSize = sensorSize
-        self.channels = channels
 
     @override
     def __str__(self):

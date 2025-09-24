@@ -64,7 +64,7 @@ if __name__ == '__main__':
         if isinstance(classifier.nn, Resnet18Dirichlet):
             logging.info(f"Using dirichlet decision maker")
             # substitute the classifier for the remaining methods with one that convert to mean
-            classifier = DirichletClassifier.fromRegressor(classifier, num_classes=classCount)
+            classifier = DirichletClassifier.fromRegressor(classifier, num_classes=classCount, expected_mask_size=ds.metadata.channels + 1)
         elif classCount == 1:
             logging.info(f"Setting classifier activation function to sigmoid for single class")
             classifier.activation = nn.Sigmoid()
