@@ -59,7 +59,10 @@ class SerializableImputator(Imputator, SerializerMixin, ABC):
     """
     Extension of Imputator that supports serialization. Used for learned imputators such as mean.
     """
-    pass
+    @abstractmethod
+    def to(self, device: torch.device):
+        """Sets configuration for this regressor at evaluation"""
+        pass
 
 
 class ZeroImputator(Imputator):
@@ -89,14 +92,14 @@ class ConstantImputator(SerializableImputator):
     _name: str
     """Name of the constant, e.g. "mean" or "median"."""
 
+    def __init__(self, constant: Tensor, name: str):
+        self.constant = constant
+        self._name = name
+
     @property
     @override
     def name(self) -> str:
         return f"{self._name} Imputation"
-
-    def __init__(self, constant: Tensor, name: str):
-        self.constant = constant
-        self._name = name
 
     @override
     def _impute(self, features: Tensor, rand: Generator = None, indices: Tensor = None) -> None:
@@ -104,6 +107,10 @@ class ConstantImputator(SerializableImputator):
         validateFeatures(features, featureCount)
         for i in range(featureCount):
             features[torch.isnan(features[:, i]), i] = self.constant[i]
+
+    @override
+    def to(self, device: torch.device):
+        self.constant = self.constant.to(device)
 
     @classmethod
     def meanFromDataloader(cls, data: DataLoader, showProgress: bool = False, device: torch.device = None) -> "ConstantImputator":

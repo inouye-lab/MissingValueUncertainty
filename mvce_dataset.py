@@ -3,9 +3,9 @@ import csv
 import json
 import logging
 import os
-import pandas as pd
 from typing import List, Optional
 
+import pandas as pd
 import torch
 from torch import nn, Tensor
 from torch.utils.data import DataLoader
@@ -20,7 +20,7 @@ from mvu.explanation.dirichlet import DirichletDecisionMaker, DirichletClassifie
 from mvu.explanation.moments import MethodOfMomentsDecisionMaker
 from mvu.logger import setupLogging
 from mvu.model.generator import CachingBatchGenerator, BatchMeanImputator, BatchGenerator
-from mvu.model.imputator import ZeroImputator, Imputator
+from mvu.model.imputator import ZeroImputator, Imputator, SerializableImputator
 from mvu.model.method import MonteCarloBatchMethod, BasicCombinationMethod, ScaleMaxBetaVarianceMethod, Method, \
     DiscardingMaskMethod
 from mvu.model.regressor import Regressor, NeuralNetworkRegressor
@@ -58,6 +58,8 @@ if __name__ == '__main__':
     # baseline options
     parser.add_argument("--zero_imputation", action='store_true',
                         help="If true, includes zero imputation.")
+    parser.add_argument("--imputators", type=str, nargs='*', default=[],
+                        help="If set, adds additional imputators loaded from the specified paths.")
     parser.add_argument("--zero_variance", action='store_true',
                         help="If true, includes zero variance.")
     parser.add_argument("--beta_variance_scales", type=float, nargs='*', default=[],
@@ -168,6 +170,14 @@ if __name__ == '__main__':
         if args.zero_imputation:
             logging.info("Including baseline imputators with zero imputation.")
             imputators.append(ZeroImputator())
+
+        # add serialized imputators
+        for path in args.imputators:
+            logging.info(f"Loading imputator from {path}")
+            imputator = SerializableImputator.load(path)
+            logging.info(f"Found {imputator.name}")
+            imputator.to(device)
+            imputators.append(imputator)
 
         # add batch imputator if requested
         if generator is not None and len(args.batch_mean_imputation) > 0:
