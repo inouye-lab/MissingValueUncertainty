@@ -22,6 +22,6 @@ conda activate ./venv
 
 python mvce_dataset.py imagenet --output ./results/mvce-imagenet-dir/ \
     --dataset '{ "path": "../../datasets/ImageNet", "sensor_size": 56 }' \
-    --classifier "./models/dirichlet-imagenet/imagenet-$model.pklz" \
+    --classifier "./models/dirichlet-imagenet/imagenet-$model.pklz" --dmv_classifier \
     --cuda_index $cuda --drop block-dropout $all \
     --action_spaces zero-one --threads 4 --trials 4

@@ -37,6 +37,8 @@ if __name__ == '__main__':
     parser.add_argument("--output", type=str, default="./results/", help='Location to save result CSV')
 
     parser.add_argument("--classifier", type=str, help='Path to the pretrained regressor to load')
+    parser.add_argument("--dmv_classifier",  action='store_true',
+                        help='If set, treats the classifier outputs as alpha values instead of probabilities, using the DMV approximation')
     parser.add_argument("--classifier_feature", type=str, default=None,
                         help='Feature index from the regressor to use, if -1 uses all features')
     parser.add_argument("--calibration_map", type=str, default="",
@@ -132,12 +134,11 @@ if __name__ == '__main__':
     # if we have a dirichlet classifier, add the dirichlet decision maker
     includeMask: IncludeMask = IncludeMask.NONE
     if isinstance(classifier, NeuralNetworkRegressor):
-        if isinstance(classifier.nn, Resnet18Dirichlet):
+        if args.dmv_classifier:
             logging.info(f"Including Dirichlet decision maker")
             classifier.activation = None
             decisionMakers.append(DirichletDecisionMaker(classifier, args.decision_samples, scale=method_to_scale["Dirichlet Network"] if method_to_scale else 1))
-            includeMask = IncludeMask.MISSING
-            # substitute the classifier for the remaining methods with one that convert to mean
+            # substitute the classifier for the remaining methods with one that can handle missing masks
             classifier = DirichletClassifier.fromRegressor(classifier, num_classes=classCount, expected_mask_size=ds.metadata.channels + 1)
         elif classCount == 1:
             logging.info(f"Setting classifier activation function to sigmoid for single class")
@@ -146,6 +147,10 @@ if __name__ == '__main__':
             logging.info(f"Setting classifier activation function to softmax for multiclass")
             # TODO: will it always be true that we wish to set the activation function like this? maybe it should be set at a nn level
             classifier.activation = nn.Softmax(dim=1)
+
+        # set the proper mask type
+        if isinstance(classifier.nn, Resnet18Dirichlet):
+            includeMask = IncludeMask.MISSING
 
     # methods
     methods: List[Method] = []
@@ -198,10 +203,10 @@ if __name__ == '__main__':
                 methods.append(ScaleMaxBetaVarianceMethod(classifier, imputator, scale))
 
     # map all additional methods to decision makers
-    if includeMask != IncludeMask.NONE:
+    if args.dmv_classifier and includeMask != IncludeMask.NONE:
         logging.info(f"Adding {len(methods)} methods with discarded masks.")
         # if we have a mask, strip it from all methods
-        maskKeep = torch.arange(0, 3, device=device)
+        maskKeep = torch.arange(0, ds.metadata.channels, device=device)
         decisionMakers.extend(MethodOfMomentsDecisionMaker(DiscardingMaskMethod(method, maskKeep), args.decision_samples, scale=method_to_scale[method.name] if method_to_scale else 1) for method in methods)
     else:
         logging.info(f"Adding {len(methods)} methods.")

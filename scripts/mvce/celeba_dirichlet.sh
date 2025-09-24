@@ -36,6 +36,6 @@ python mvce_dataset.py celeba --output ./results/mvce-25/$feature/$mask/ \
       "return_index": true,
       "targets": ["'$feature'"]
     }' \
-    --classifier "./models/dirichlet-celeba/$feature/celeba-$model.pklz" \
+    --classifier "./models/dirichlet-celeba/$feature/celeba-$model.pklz" --dmv_classifier \
     --cuda_index $cuda --mask $mask $all $calibration \
     --action_spaces zero-one --threads 4 --trials 4

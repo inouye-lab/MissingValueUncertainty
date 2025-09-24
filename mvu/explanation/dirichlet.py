@@ -64,8 +64,8 @@ class DirichletClassifier(NeuralNetworkRegressor):
     """Size the mask should be to run the Dirichlet classifier"""
 
 
-    def __init__(self, nn: Module, num_classes: int, mask_dim: int = 1, expected_mask_size: int = 4):
-        super().__init__(nn, safeNormalize, 1 if num_classes == 1 else -1)
+    def __init__(self, nn: Module, num_classes: int, mask_dim: int = 1, expected_mask_size: int = 4, activation: callable = safeNormalize):
+        super().__init__(nn, activation, 1 if num_classes == 1 else -1)
         self.mask_dim = mask_dim
         self.expected_mask_size = expected_mask_size
 

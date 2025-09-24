@@ -26,6 +26,6 @@ conda activate ./venv
 
 python mvce_dataset.py cifar10 --output ./results/mvce-cifar10-dir/ \
     --dataset '{ "path": "../../datasets/cifar10", "image_size": 224, "sensor_size": 56 }' \
-    --classifier "./models/dirichlet-cifar10/cifar10-$model.pklz" \
+    --classifier "./models/dirichlet-cifar10/cifar10-$model.pklz" --dmv_classifier \
     --cuda_index $cuda --drop block-dropout $all $calibration \
     --action_spaces zero-one --threads 4 --trials 4
