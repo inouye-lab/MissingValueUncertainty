@@ -15,7 +15,7 @@ from mvu.dataset.mutators import SpecificFeatureRemovingDataset, createMask, Inc
 from mvu.dataset.specialized.celeba import CelebADataset
 from mvu.explanation.actions import createActionSpace
 from mvu.explanation.calibration import MVCEExperiment
-from mvu.explanation.decision import DecisionMaker
+from mvu.explanation.decision import DecisionMaker, ScaleProbabilityDecisionMaker, DiscardingMaskDecisionMaker
 from mvu.explanation.dirichlet import DirichletDecisionMaker, DirichletClassifier
 from mvu.explanation.moments import MethodOfMomentsDecisionMaker
 from mvu.logger import setupLogging
@@ -66,6 +66,8 @@ if __name__ == '__main__':
                         help="If true, includes zero variance.")
     parser.add_argument("--beta_variance_scales", type=float, nargs='*', default=[],
                         help="Scales of the beta variance to try for basic imputation.")
+    parser.add_argument("--probability_scales", type=float, nargs='*', default=[],
+                        help="Scales of the probability to produce alpha values for basic imputation.")
 
     # action space
     parser.add_argument("--action_spaces", nargs='*', type=jsonOrName,
@@ -201,6 +203,19 @@ if __name__ == '__main__':
                 methods.append(BasicCombinationMethod(classifier, imputator))
             for scale in args.beta_variance_scales:
                 methods.append(ScaleMaxBetaVarianceMethod(classifier, imputator, scale))
+
+        # add methods for probability scales
+        if len(args.probability_scales) > 0:
+            if args.dmv_classifier:
+                logging.info(f"Adding {len(imputators)} imputators with discarded masks for probability scales {args.probability_scales}.")
+                # if we have a mask, strip it from all methods
+                maskKeep = torch.arange(0, ds.metadata.channels, device=device)
+                decisionMakers.extend(DiscardingMaskDecisionMaker(ScaleProbabilityDecisionMaker(classifier, imputator, args.decision_samples, scale), maskKeep)
+                                      for scale in args.probability_scales for imputator in imputators)
+            else:
+                logging.info(f"Adding {len(imputators)} for probability scales {args.probability_scales}.")
+                decisionMakers.extend(ScaleProbabilityDecisionMaker(classifier, imputator, args.decision_samples, scale)
+                                      for scale in args.probability_scales for imputator in imputators)
 
     # map all additional methods to decision makers
     if args.dmv_classifier and includeMask != IncludeMask.NONE:

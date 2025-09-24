@@ -2,10 +2,14 @@ from abc import ABC, abstractmethod
 from typing import Tuple, Union, List
 
 import torch
+from overrides import override
+from sympy.stats import Dirichlet
 from torch import Tensor, Generator
 from torch.distributions import Distribution
 
 from mvu.model.common import CachableModel, Namable
+from mvu.model.imputator import Imputator
+from mvu.model.regressor import Regressor
 
 
 def computeActionConfidence(phi: Tensor, lossFunction: callable, action: int, actions: Tensor) -> float:
@@ -163,3 +167,67 @@ class DecisionMaker(CachableModel, Namable, ABC):
         :return:  Tuple of actions (size inputSamples) and action confidences (size inputSamples)
         """
         pass
+
+
+class DiscardingMaskDecisionMaker(DecisionMaker):
+    """Decision maker that wraps another decision maker, discarding the mask tensor. Used to allow mixing dirichlet network with non"""
+
+    decisionMaker: DecisionMaker
+    """Wrapped decision maker."""
+    maskDim: int
+    """Dimension of the mask to modify"""
+    maskKeep: Tensor
+    """Indices to keep from the mask"""
+
+    def __init__(self, decisionMaker: DecisionMaker, maskKeep: Tensor, maskDim: int = 1):
+        self.decisionMaker = decisionMaker
+        self.maskKeep = maskKeep
+
+    @property
+    @override
+    def name(self) -> str:
+        return self.decisionMaker.name
+
+    @override
+    def estimateBestAction(self, features: Tensor, lossFunction: callable, actions: Tensor, rand: Generator = None,
+                           indices: Tensor = None) -> Tuple[Tensor, Tensor]:
+        return self.decisionMaker.estimateBestAction(torch.index_select(features, self.maskDim, self.maskKeep), lossFunction, actions, rand, indices)
+
+
+class ScaleProbabilityDecisionMaker(DecisionMaker):
+    """Decision maker that forms the parameters for the dirichlet by scaling the probability values by a constant."""
+
+    regressor: Regressor
+    imputator: Imputator
+    scale: float
+    """Amount to scale the probabilities by"""
+
+    def __init__(self, regressor: Regressor, imputator: Imputator, distSamples: int, scale: float = 10):
+        assert 0 < scale, "Scale must be positive"
+        self.regressor = regressor
+        self.imputator = imputator
+        self.size = torch.Size((distSamples,))
+        self.scale = scale
+
+    @property
+    @override
+    def name(self) -> str:
+        return f"Scaled probability * {self.scale} - {self.imputator.name}"
+
+    @override
+    def estimateBestAction(self, features: Tensor, lossFunction: callable, actions: Tensor, rand: Generator = None,
+                           indices: Tensor = None) -> Tuple[Tensor, Tensor]:
+
+        # replace nan with the missing value; allows mixing dirichlet and non with the different mask formats
+        mean = self.regressor.predict(self.imputator.impute(features, rand=rand, indices=indices))
+        alphas = mean * self.scale
+
+        assert alphas.shape[0] == features.shape[0]
+
+        # TODO: is the following significant enough to make a new class for features -> alpha mapping?
+        # No worry of zero variance, so can directly construct the distribution over the full set of alphas
+        distribution = Dirichlet(alphas)
+
+        # phis has dimension (randomSamples, datasetSamples, featureCount), but we want (datasetSamples, randomSamples, featureCount)
+        phis = torch.swapaxes(distribution.sample(self.size), 0, 1)
+        return computeBestActions(phis, lossFunction, actions)
