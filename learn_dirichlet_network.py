@@ -173,7 +173,11 @@ if __name__ == '__main__':
         cleanFeatures = cleanFeatures.to(device)
         targets = targets.to(device)
         maskedPrediction = model.predict(maskedFeatures)
-        cleanPrediction = teacher.predict(cleanFeatures)
+        if args.clean_weight > 0 or args.dirichlet_weight > 0:
+            cleanPrediction = teacher.predict(cleanFeatures)
+        else:
+            # if we aren't going to use clean, save some effort by just reusing the masked prediction
+            cleanPrediction = torch.ones_like(maskedPrediction)
         # might at that point want multiple loss function support
         loss = lossFunction(cleanPrediction, maskedPrediction, targets).item()
         return loss, targets.shape[0]
