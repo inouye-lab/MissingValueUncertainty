@@ -103,10 +103,9 @@ class ConstantImputator(SerializableImputator):
 
     @override
     def _impute(self, features: Tensor, rand: Generator = None, indices: Tensor = None) -> None:
-        featureCount = len(self.constant)
-        validateFeatures(features, featureCount)
-        for i in range(featureCount):
-            features[torch.isnan(features[:, i]), i] = self.constant[i]
+        for i in range(features.shape[0]):
+            missing = torch.isnan(features[i])
+            features[i][missing] = self.constant[missing]
 
     @override
     def to(self, device: torch.device):
