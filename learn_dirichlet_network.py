@@ -8,7 +8,7 @@ from typing import List, Optional
 
 import torch
 from torch import Tensor, Generator, nn
-from torch.nn import Identity
+from torch.nn import Identity, BCEWithLogitsLoss, CrossEntropyLoss
 from torch.nn.functional import sigmoid
 from torch.utils.data import DataLoader, Dataset
 
@@ -129,7 +129,8 @@ if __name__ == '__main__':
         lossFunction = DirichletStrengthLogitLoss(args.masked_weight, args.dirichlet_weight, cleanWeight=args.clean_weight)
         model.nn.activation = Identity()
     elif args.use_logits:
-        lossFunction = DirichletLogitLoss(args.masked_weight, args.dirichlet_weight, cleanWeight=args.clean_weight)
+        cleanLoss = BCEWithLogitsLoss() if len(ds.metadata.target) == 1 else CrossEntropyLoss()
+        lossFunction = DirichletLogitLoss(args.masked_weight, args.dirichlet_weight, cleanWeight=args.clean_weight, cleanLoss=cleanLoss)
     else:
         lossFunction = DirichletLoss(args.masked_weight, args.dirichlet_weight, cleanWeight=args.clean_weight)
 
@@ -178,8 +179,12 @@ if __name__ == '__main__':
         return loss, targets.shape[0]
 
     if len(ds.metadata.target) == 1:
-        def accuracyLoss(prediction: Tensor, targets: Tensor) -> Tensor:
-            return torch.eq(sigmoid(prediction), targets).float().mean(dim=0)
+        if args.use_logits:
+            def accuracyLoss(prediction: Tensor, targets: Tensor) -> Tensor:
+                return torch.eq(sigmoid(prediction) > 0.5, targets).float().mean(dim=0)
+        else:
+            def accuracyLoss(prediction: Tensor, targets: Tensor) -> Tensor:
+                return torch.eq(prediction > 0.5, targets).float().mean(dim=0)
     else:
         def accuracyLoss(prediction: Tensor, targets: Tensor) -> Tensor:
             return torch.eq(prediction.max(dim=1).indices, targets).float().mean(dim=0)
