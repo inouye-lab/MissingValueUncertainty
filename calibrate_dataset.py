@@ -237,9 +237,9 @@ if __name__ == '__main__':
 
     # TODO: our newer datasets support returning the original if prompted, don't need loaderClean
     if includeMask == IncludeMask.ALWAYS:
-        loaderClean = DataLoader(SpecificFeatureRemovingDataset(ds.test, createMask(ds.metadata, "none"), includeMask=includeMask), batch_size=args.batch_size, pin_memory=True)
+        loaderClean = DataLoader(SpecificFeatureRemovingDataset(ds.validate, createMask(ds.metadata, "none"), includeMask=includeMask), batch_size=args.batch_size, pin_memory=True)
     else:
-        loaderClean = DataLoader(ds.test, batch_size=args.batch_size, pin_memory=True)
+        loaderClean = DataLoader(ds.validate, batch_size=args.batch_size, pin_memory=True)
     loaderMissing = DataLoader(dsMissing, batch_size=args.batch_size, pin_memory=True)
 
     # finally, build experiment list
