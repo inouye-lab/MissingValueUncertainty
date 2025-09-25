@@ -208,16 +208,30 @@ if __name__ == '__main__':
 
         # add methods for probability scales
         if len(args.probability_scales) > 0:
+            scaleLog = args.probability_scales
+            if method_to_scale:
+                logging.info(f"Ignoring passed probability scales in favor of calibrated map.")
+                scaleLog = "<calibrated>"
             if args.dmv_classifier:
-                logging.info(f"Adding {len(imputators)} imputators with discarded masks for probability scales {args.probability_scales}.")
+                logging.info(f"Adding {len(imputators)} imputators with discarded masks for probability scales {scaleLog}.")
                 # if we have a mask, strip it from all methods
                 maskKeep = torch.arange(0, ds.metadata.channels, device=device)
-                decisionMakers.extend(DiscardingMaskDecisionMaker(ScaleProbabilityDecisionMaker(classifier, imputator, args.decision_samples, scale), maskKeep)
-                                      for scale in args.probability_scales for imputator in imputators)
+                for imputator in imputators:
+                    if method_to_scale:
+                        dm = ScaleProbabilityDecisionMaker(classifier, imputator, args.decision_samples, 1)
+                        dm.scale = method_to_scale[dm.name]
+                        decisionMakers.append(DiscardingMaskDecisionMaker(dm, maskKeep))
+                    else:
+                        decisionMakers.extend(DiscardingMaskDecisionMaker(ScaleProbabilityDecisionMaker(classifier, imputator, args.decision_samples, scale), maskKeep) for scale in args.probability_scales)
             else:
-                logging.info(f"Adding {len(imputators)} imputators for probability scales {args.probability_scales}.")
-                decisionMakers.extend(ScaleProbabilityDecisionMaker(classifier, imputator, args.decision_samples, scale)
-                                      for scale in args.probability_scales for imputator in imputators)
+                logging.info(f"Adding {len(imputators)} imputators for probability scales {scaleLog}.")
+                for imputator in imputators:
+                    if method_to_scale:
+                        dm = ScaleProbabilityDecisionMaker(classifier, imputator, args.decision_samples, 1)
+                        dm.scale = method_to_scale[dm.name]
+                        decisionMakers.append(dm)
+                    else:
+                        decisionMakers.extend(ScaleProbabilityDecisionMaker(classifier, imputator, args.decision_samples, scale) for scale in args.probability_scales)
 
     # map all additional methods to decision makers
     if args.dmv_classifier and includeMask != IncludeMask.NONE:

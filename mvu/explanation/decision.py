@@ -211,7 +211,7 @@ class ScaleProbabilityDecisionMaker(DecisionMaker):
     @property
     @override
     def name(self) -> str:
-        return f"Scaled probability * {self.scale} - {self.imputator.name}"
+        return f"Scaled probability - {self.imputator.name}"
 
     @override
     def estimateBestAction(self, features: Tensor, lossFunction: callable, actions: Tensor, rand: Generator = None,
