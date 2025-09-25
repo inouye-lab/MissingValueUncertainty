@@ -3,6 +3,7 @@ import json
 import logging
 
 import torch
+from sympy import false
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 
@@ -61,17 +62,22 @@ if __name__ == '__main__':
     classifier = Regressor.load(args.classifier)
     classifier.to(device)
     if isinstance(classifier, NeuralNetworkRegressor):
+        needsActivation = True
         if isinstance(classifier.nn, Resnet18Dirichlet):
             logging.info(f"Using dirichlet decision maker")
             # substitute the classifier for the remaining methods with one that convert to mean
             classifier = DirichletClassifier.fromRegressor(classifier, num_classes=classCount, expected_mask_size=ds.metadata.channels + 1)
-        elif classCount == 1:
-            logging.info(f"Setting classifier activation function to sigmoid for single class")
-            classifier.activation = nn.Sigmoid()
-        else:
-            logging.info(f"Setting classifier activation function to softmax for multiclass")
-            # TODO: will it always be true that we wish to set the activation function like this? maybe it should be set at a nn level
-            classifier.activation = nn.Softmax(dim=1)
+            if not isinstance(classifier.nn.activation, nn.Identity):
+                needsActivation = False
+
+        if needsActivation:
+            if classCount == 1:
+                logging.info(f"Setting classifier activation function to sigmoid for single class")
+                classifier.activation = nn.Sigmoid()
+            else:
+                logging.info(f"Setting classifier activation function to softmax for multiclass")
+                # TODO: will it always be true that we wish to set the activation function like this? maybe it should be set at a nn level
+                classifier.activation = nn.Softmax(dim=1)
 
     # select dataset split
     dataset: Dataset

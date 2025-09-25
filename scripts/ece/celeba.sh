@@ -2,16 +2,13 @@
 
 # Print usage if unspecified
 if [ $# -le 2 ]; then
-  echo "Expected arguments: <feature> <model> <cuda> [dirichlet]"
+  echo "Expected arguments: <feature> <model> <cuda> [prefix]"
   exit 1
 fi
 feature=$1
 model=$2
 cuda=$3
-dirichlet=""
-if [ $# -ge 4 ]; then
-  dirichlet="dirichlet-"
-fi
+prefix=${4:-}
 shift $#
 
 # Loads in all relevant datasets
@@ -25,5 +22,5 @@ python ece_dataset.py celeba --output ./results/ece/celeba/$feature/ \
       "attributes_path": "../../datasets/CelebAMask/1024/CelebAMask-HQ-attribute-anno.txt",
       "targets": ["'$feature'"]
     }' \
-    --classifier "./models/${dirichlet}celeba/$feature/celeba-$model.pklz" \
+    --classifier "./models/${prefix}celeba/$feature/celeba-$model.pklz" \
     --cuda_index $cuda
