@@ -152,7 +152,9 @@ if __name__ == '__main__':
 
         # set the proper mask type
         if isinstance(classifier.nn, Resnet18Dirichlet):
-            includeMask = IncludeMask.MISSING
+            includeMask = IncludeMask.MISSING if args.dmv_classifier else IncludeMask.ALWAYS
+
+    logging.info(f"Mask channel mode {includeMask} in data loader")
 
     # methods
     methods: List[Method] = []
@@ -213,7 +215,7 @@ if __name__ == '__main__':
                 decisionMakers.extend(DiscardingMaskDecisionMaker(ScaleProbabilityDecisionMaker(classifier, imputator, args.decision_samples, scale), maskKeep)
                                       for scale in args.probability_scales for imputator in imputators)
             else:
-                logging.info(f"Adding {len(imputators)} for probability scales {args.probability_scales}.")
+                logging.info(f"Adding {len(imputators)} imputators for probability scales {args.probability_scales}.")
                 decisionMakers.extend(ScaleProbabilityDecisionMaker(classifier, imputator, args.decision_samples, scale)
                                       for scale in args.probability_scales for imputator in imputators)
 
@@ -241,7 +243,10 @@ if __name__ == '__main__':
         dsMissing = randomDropping(ds.test, ds.metadata, **missingArgs, **args.drop)
 
     # TODO: our newer datasets support returning the original if prompted, don't need loaderClean
-    loaderClean = DataLoader(ds.test, batch_size=args.batch_size, pin_memory=True)
+    if includeMask == IncludeMask.ALWAYS:
+        loaderClean = DataLoader(SpecificFeatureRemovingDataset(ds.test, createMask(ds.metadata, "none"), includeMask=includeMask), batch_size=args.batch_size, pin_memory=True)
+    else:
+        loaderClean = DataLoader(ds.test, batch_size=args.batch_size, pin_memory=True)
     loaderMissing = DataLoader(dsMissing, batch_size=args.batch_size, pin_memory=True)
 
     # finally, build experiment list
