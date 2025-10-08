@@ -118,7 +118,7 @@ if __name__ == '__main__':
 
     # ensure the teacher is set
     if teacher is None:
-        logging.error("Using new model to predict phi values")
+        logging.info("Using new model to predict phi values")
         teacher = model
 
 
