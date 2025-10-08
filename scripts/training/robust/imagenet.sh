@@ -19,7 +19,7 @@ python learn_dirichlet_network.py imagenet --seed 1337 --output ./models/dirichl
     --optimizer '{ "name": "sgd", "lr": 0.0001, "weight_decay": 0.0001, "momentum": 0.9 }' \
     --validate_every 5 --training_iterations 30 --batch_size 256 --patience 2 \
     --cuda_index $cuda \
-    --clean_weight 0 --masked_weight 1 --dirichlet_weight 0 \
+    --clean_weight 1 --masked_weight 1 --dirichlet_weight 0 \
     --drop block-dropout \
     --architecture '{"name": "resnet_dirichlet", "activation": "identity", "keep_final_layer": true}' --use_logits \
     '{ "path": "../../datasets/ImageNet", "sensor_size": 56 }'
