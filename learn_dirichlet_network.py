@@ -49,6 +49,8 @@ if __name__ == '__main__':
     parser.add_argument("--evaluate_training", action='store_true',
                         help="If set, training accuracy is logged during validation. Useful for debugging patience.")
     parser.add_argument("--teacher", type=str, default=None, help='Path to the pretrained regressor to load')
+    parser.add_argument("--pin_training_memory", action='store_true',
+                        help="If set, uses memory pinning for training. May lead to mutators not refreshing properly.")
 
     # optimizer
     parser.add_argument("--optimizer", type=jsonOrName, default="adam", help='Optimizer choice')
@@ -164,7 +166,7 @@ if __name__ == '__main__':
 
     # setup data loading
     # TODO: pinning memory on the masked datasets is likely to cache specific masks
-    trainLoader    = DataLoader(maskedTraining,   batch_size=args.batch_size, shuffle=True,  generator=rand, pin_memory=True)
+    trainLoader    = DataLoader(maskedTraining,   batch_size=args.batch_size, shuffle=True,  generator=rand, pin_memory=args.pin_training_memory)
     validateLoader = DataLoader(maskedValidation, batch_size=args.batch_size, shuffle=False, generator=rand, pin_memory=True)
     cleanLoader    = DataLoader(cleanValidation,  batch_size=args.batch_size, shuffle=False, generator=rand, pin_memory=True)
 
