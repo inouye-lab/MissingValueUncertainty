@@ -7,6 +7,7 @@ from time import perf_counter
 
 import torch
 from torch import Tensor, Generator
+from torch.nn.functional import sigmoid
 from torch.utils.data import DataLoader
 
 from mvu.dataset.loader import getDatasetSplits
@@ -103,10 +104,21 @@ if __name__ == '__main__':
         optimizer = getOptimizer(model.nn, **args.optimizer)
         scheduler = getScheduler(optimizer, **args.scheduler)
 
+        # prepare accuracy loss function
+        if len(ds.metadata.target) == 1:
+            def accuracyLoss(prediction: Tensor, targets: Tensor) -> Tensor:
+                return torch.eq(sigmoid(prediction) > 0.5, targets).float().mean(dim=0)
+        else:
+            def accuracyLoss(prediction: Tensor, targets: Tensor) -> Tensor:
+                return torch.eq(prediction.max(dim=1).indices, targets).float().mean(dim=0)
+
         model.nn.eval()
         if args.evaluate_training:
             trainingAccuracy = model.evaluateDataloader(dataLoader, device, lossFunction)
             logging.info(f"Initial training error {trainingAccuracy.mean().item()}")
+
+        validationAccuracy = model.evaluateDataloader(validateLoader, device=device, lossFunction=accuracyLoss)
+        logging.info(f"Initial validation accuracy {validationAccuracy}")
 
         validationError = model.evaluateDataloader(validateLoader, device, lossFunction)
         validationBest = validationError.mean().item()
@@ -156,6 +168,8 @@ if __name__ == '__main__':
                 if args.evaluate_training:
                     trainingAccuracy = model.evaluateDataloader(dataLoader, device, lossFunction)
                     logging.info(f"Training error in evaluate mode {trainingAccuracy.mean().item()}")
+                validationAccuracy = model.evaluateDataloader(validateLoader, device=device, lossFunction=accuracyLoss)
+                logging.info(f"Validation accuracy: {validationAccuracy}")
 
                 # FIXME: there is probably a better way to compare multiple variables
                 validationError = model.evaluateDataloader(validateLoader, device, lossFunction)
