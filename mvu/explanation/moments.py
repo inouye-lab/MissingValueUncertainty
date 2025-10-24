@@ -1,4 +1,4 @@
-from typing import Tuple, Union, List, Optional
+from typing import Tuple, Union, List
 
 import torch
 from overrides import override
@@ -106,7 +106,8 @@ class MethodOfMomentsDecisionMaker(DecisionMaker):
 
     @override
     def estimateBestAction(self, features: Tensor, lossFunction: callable, actions: Tensor, rand: Generator = None,
-                           indices: Tensor = None) -> Tuple[Tensor, Tensor]:
+                           indices: Tensor = None, returnBestClass: bool = True
+                           ) -> Union[Tuple[Tensor, Tensor], Tuple[Tensor, Tensor, Tensor]]:
         inputSamples = features.shape[0]
         mean, var = self.method.predictWithUncertainty(features, rand=rand, indices=indices)
         assert mean.shape[0] == inputSamples
@@ -115,7 +116,12 @@ class MethodOfMomentsDecisionMaker(DecisionMaker):
         # TODO: not sure how to enforce the random state in torch distributions
         assert len(distributions) == inputSamples
         phis = [dist.sample(self.size) for dist in distributions]
-        return computeBestActions(phis, lossFunction, actions)
+        actions = computeBestActions(phis, lossFunction, actions)
+        if returnBestClass:
+            # PyRedundantParentheses not supported in python 3.6
+            # noinspection PyRedundantParentheses
+            return (*actions, torch.argmax(mean, dim=1))
+        return actions
 
     @override
     def supportsIndices(self, indices: Tensor) -> Tensor:

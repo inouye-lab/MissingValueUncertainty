@@ -154,7 +154,8 @@ class DecisionMaker(CachableModel, Namable, ABC):
 
     @abstractmethod
     def estimateBestAction(self, features: Tensor, lossFunction: callable, actions: Tensor, rand: Generator = None,
-                           indices: Tensor = None) -> Tuple[Tensor, Tensor]:
+                           indices: Tensor = None, returnBestClass: bool = True
+                           ) -> Union[Tuple[Tensor, Tensor], Tuple[Tensor, Tensor, Tensor]]:
         """
         Estimates the best action for the given features list.
         :param features:      List of features with missingness, size is (inputSamples, featureDim...)
@@ -163,8 +164,11 @@ class DecisionMaker(CachableModel, Namable, ABC):
         :param rand:          Random state
         :param indices:       Sample indices for the sake of caching. This should only be used to reduce computation times,
                               not in any way that provides access to normally hidden data.
+        :param returnBestClass: If true, returns the best class prediction alongside the action prediction.
         :return:  Tuple of actions (size inputSamples) and action confidences (size inputSamples)
         """
+        # TODO: returnBestClass should really take into account the loss function to weight the best classes
+        # will likely be a lot easier if we swap the loss function for a cost projection matrix, zero-one loss becomes identity
         pass
 
 
@@ -189,8 +193,9 @@ class DiscardingMaskDecisionMaker(DecisionMaker):
 
     @override
     def estimateBestAction(self, features: Tensor, lossFunction: callable, actions: Tensor, rand: Generator = None,
-                           indices: Tensor = None) -> Tuple[Tensor, Tensor]:
-        return self.decisionMaker.estimateBestAction(torch.index_select(features, self.maskDim, self.maskKeep), lossFunction, actions, rand, indices)
+                           indices: Tensor = None, returnBestClass: bool = True
+                           ) -> Union[Tuple[Tensor, Tensor], Tuple[Tensor, Tensor, Tensor]]:
+        return self.decisionMaker.estimateBestAction(torch.index_select(features, self.maskDim, self.maskKeep), lossFunction, actions, rand, indices, returnBestClass)
 
 
 class ScaleProbabilityDecisionMaker(DecisionMaker):
@@ -215,7 +220,8 @@ class ScaleProbabilityDecisionMaker(DecisionMaker):
 
     @override
     def estimateBestAction(self, features: Tensor, lossFunction: callable, actions: Tensor, rand: Generator = None,
-                           indices: Tensor = None) -> Tuple[Tensor, Tensor]:
+                           indices: Tensor = None, returnBestClass: bool = True
+                           ) -> Union[Tuple[Tensor, Tensor], Tuple[Tensor, Tensor, Tensor]]:
 
         # replace nan with the missing value; allows mixing dirichlet and non with the different mask formats
         mean = self.regressor.predict(self.imputator.impute(features, rand=rand, indices=indices))
@@ -229,4 +235,9 @@ class ScaleProbabilityDecisionMaker(DecisionMaker):
 
         # phis has dimension (randomSamples, datasetSamples, featureCount), but we want (datasetSamples, randomSamples, featureCount)
         phis = torch.swapaxes(distribution.sample(self.size), 0, 1)
-        return computeBestActions(phis, lossFunction, actions)
+        result = computeBestActions(phis, lossFunction, actions)
+        if returnBestClass:
+            # PyRedundantParentheses not supported in Python 3.6
+            # noinspection PyRedundantParentheses
+            return (*result, torch.argmax(mean, dim=1))
+        return result

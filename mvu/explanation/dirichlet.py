@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Union
 
 import torch
 from overrides import override
@@ -30,7 +30,8 @@ class DirichletDecisionMaker(DecisionMaker):
 
     @override
     def estimateBestAction(self, features: Tensor, lossFunction: callable, actions: Tensor, rand: Generator = None,
-                           indices: Tensor = None) -> Tuple[Tensor, Tensor]:
+                           indices: Tensor = None, returnBestClass: bool = True
+                           ) -> Union[Tuple[Tensor, Tensor], Tuple[Tensor, Tensor, Tensor]]:
         # replace nan with the missing value; allows mixing dirichlet and non with the different mask formats
         nans = torch.isnan(features)
         if nans.any():
@@ -44,7 +45,12 @@ class DirichletDecisionMaker(DecisionMaker):
 
         # phis has dimension (randomSamples, datasetSamples, featureCount), but we want (datasetSamples, randomSamples, featureCount)
         phis = torch.swapaxes(distribution.sample(self.size), 0, 1)
-        return computeBestActions(phis, lossFunction, actions)
+        result = computeBestActions(phis, lossFunction, actions)
+        if returnBestClass:
+            # PyRedundantParentheses not supported in Python 3.6
+            # noinspection PyRedundantParentheses
+            return (*result, torch.argmax(alphas, dim=1))
+        return result
 
     @property
     @override
