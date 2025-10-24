@@ -11,6 +11,8 @@ if __name__ == '__main__':
 
     parser.add_argument("name", type=str, nargs='*', help='List of files to combine')
     parser.add_argument("--output", type=str, help='Name for output CSV')
+    parser.add_argument("--type", type=str, default='legacy',
+                        help="Calibration type, can be 'soft', 'hard', or 'legacy")
 
     parser.add_argument('-v', '--verbose', type=int, nargs='?', default=1, help='Logging verbosity level')
 
@@ -19,9 +21,26 @@ if __name__ == '__main__':
     folder = os.path.dirname(args.output)
     date = setupLogging(args.verbose, os.path.join(folder, "log"), args=args)
 
+    # select MVCE key, allows us to choose soft or hard consistency for calibration
+    mvceKey: str
+    if args.type == 'soft':
+        mvceKey = 'Soft MVCE Mean'
+    elif args.type == 'hard':
+        mvceKey = 'Hard MVCE Mean'
+    elif args.type == 'legacy':
+        mvceKey = 'MVCE Mean'
+    else:
+        raise ValueError(f"Unknown calibration type: {args.type}")
+    logging.info(f"Calibrating using {args.type} using key {mvceKey}")
+
     # load in data frames
     logging.info(f"Loading in {args.name} data frames from {folder}")
     dataframes = [pd.read_csv(name) for name in args.name]
+
+    # ensure all dataframes contain the relevant key
+    for i, df in enumerate(dataframes):
+        if not mvceKey in df.columns:
+            raise ValueError(f"Missing {mvceKey} in dataframe {i}: {args.name[i]}")
 
     # merge into 1 dataframe
     logging.info("Combining dataframes")
@@ -29,12 +48,12 @@ if __name__ == '__main__':
 
     # average over masks if needed
     logging.info("Averaging over masks")
-    perMethodScale = (combinedInput.groupby(['Method', 'Scale'])['MVCE Mean']
+    perMethodScale = (combinedInput.groupby(['Method', 'Scale'])[mvceKey]
                       .mean().reset_index())
 
     # find best scale for the method
     logging.info("Finding best method")
-    bestScale = (perMethodScale.loc[perMethodScale.groupby('Method')['MVCE Mean'].idxmin()]
+    bestScale = (perMethodScale.loc[perMethodScale.groupby('Method')[mvceKey].idxmin()]
                  .reset_index(drop=True)
                  .sort_values('Method'))
 
