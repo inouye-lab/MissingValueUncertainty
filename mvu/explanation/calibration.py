@@ -30,7 +30,7 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
                             or dataloader for best actions if classifer is None.
     :param mutatedLoader:   DataLoader for data with missingness.
     :param decisionMaker:   Logic to make a decision given a feature tensor.
-    :param lossFunction:    Loss function for the action space. TODO: update why list
+    :param lossFunction:    Loss function for the action space. May be a list to perform an expectation over all options
     :param actions:         Action space.
     :param buckets:         Number of buckets for computing the calibration error.
     :param avgConsistency   If true, returns average consistency with MVCE
@@ -259,14 +259,23 @@ def computeECE(loader: DataLoader, classifier: Regressor, classCount: int, bucke
 class MVCEExperiment:
     # mvce parameters, see `computeMVCE` for docs
     cleanLoader: DataLoader
+    """Data loader for clean samples"""
     mutatedLoader: DataLoader
+    """Data loader for mutated samples"""
     decisionMaker: DecisionMaker
+    """Logic for making a decision"""
     lossFunction: callable
+    """User provided cost function, simplest case is zero-one"""
     actions: Tensor
+    """User provided action tensor, may match up to classes"""
     buckets: int
-    classifier: Regressor
+    """Number of buckets for MVCE to use"""
+    classifier: Optional[Regressor]
+    """Classifier for clean predictions, may be None if `cleanLoader` provides clean actions."""
     rand: Generator
+    """Random state for consistency in experiments"""
     device: torch.device
+    """Device to run experiments"""
 
     # additional parameters
     maskName: str
@@ -370,15 +379,23 @@ class MVCEExperiment:
 class CalibrationScaleExperiment:
     # mvce parameters, see `computeMVCE` for docs
     cleanLoader: DataLoader
+    """Data loader for clean samples"""
     mutatedLoader: DataLoader
+    """Data loader for mutated samples"""
     decisionMaker: DecisionMaker
+    """Logic for making a decision"""
     lossFunctions: List[callable]
     """List of loss functions to be used for taking Expectation when calculating post hoc callibration"""
     actions: Tensor
+    """User provided action tensor, may match up to classes"""
     buckets: int
-    classifier: Regressor
+    """Number of buckets for MVCE to use"""
+    classifier: Optional[Regressor]
+    """Classifier for clean predictions, may be None if `cleanLoader` provides clean actions."""
     rand: Generator
+    """Random state for consistency in experiments"""
     device: torch.device
+    """Device to run experiments"""
 
     # additional parameters
     maskName: str
