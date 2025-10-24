@@ -91,7 +91,7 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
             batchLoss = lossFunction
 
         mutatedFeatures = mutatedBatch[0]
-        trueLabels = mutatedBatch[1].to(device)
+        trueLabels = mutatedBatch[1].squeeze(1).to(device=device, dtype=torch.int)
         sampleIndices: Optional[Tensor] = None
         supportedIndices: Tensor
         # if we have indices, ensure they match then pass them along
