@@ -48,6 +48,8 @@ class DirichletDecisionMaker(DecisionMaker):
         result = computeBestActions(phis, lossFunction, actions)
         if returnBestClass:
             # PyRedundantParentheses not supported in Python 3.6
+            # not using mean prediction as we have an alpha per class
+            assert len(alphas.shape) == 2 and alphas.shape[1] > 1, "Expected an alpha value per class"
             # noinspection PyRedundantParentheses
             return (*result, torch.argmax(alphas, dim=1))
         return result

@@ -144,6 +144,21 @@ def sampleProbabilityActionDominated(dist: Distribution, samples: int, lossFunct
     return computeProbabilityActionDominated(dist.sample(torch.Size((samples,))), lossFunction, action, actions)
 
 
+def meanPrediction(phi: Tensor) -> Tensor:
+    """Computes the mean prediction for the given vector of phis"""
+    # single dimension: just take anything greater than 0.5, result will be boolean so make it ints
+    if len(phi.shape) == 1:
+        return (phi > 0.5).to(torch.int)
+    
+    # two dimensions but a dimension of size 1? squeeze the extra dimension
+    assert len(phi.shape) == 2, "Too many dimensions on phi"
+    if phi.shape[1] == 1:
+        return (phi > 0.5).squeeze(1).to(torch.int)
+
+    # multiclass case - take the highest probability index
+    return torch.argmax(phi, dim=1)
+
+
 class DecisionMaker(CachableModel, Namable, ABC):
     """
     Logic to make a decision given a input tensor (with missingness) and an input action space (with loss function)
@@ -239,5 +254,5 @@ class ScaleProbabilityDecisionMaker(DecisionMaker):
         if returnBestClass:
             # PyRedundantParentheses not supported in Python 3.6
             # noinspection PyRedundantParentheses
-            return (*result, torch.argmax(mean, dim=1))
+            return (*result, meanPrediction(mean))
         return result

@@ -5,7 +5,7 @@ from overrides import override
 from torch import Tensor, Generator
 from torch.distributions import Distribution, Beta, Dirichlet
 
-from .decision import DecisionMaker, computeBestActions
+from .decision import DecisionMaker, computeBestActions, meanPrediction
 from .delta_dist import DeltaDistribution
 from ..model.method import Method
 
@@ -120,7 +120,7 @@ class MethodOfMomentsDecisionMaker(DecisionMaker):
         if returnBestClass:
             # PyRedundantParentheses not supported in python 3.6
             # noinspection PyRedundantParentheses
-            return (*actions, torch.argmax(mean, dim=1))
+            return (*actions, meanPrediction(mean))
         return actions
 
     @override
