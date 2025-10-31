@@ -90,8 +90,13 @@ def computeMVCE(cleanLoader: DataLoader, mutatedLoader: DataLoader, decisionMake
         else:
             batchLoss = lossFunction
 
+        # TODO: consider if we want to allow non-categorical true labels, would make more sense if the weights matrix is done
         mutatedFeatures = mutatedBatch[0]
-        trueLabels = mutatedBatch[1].squeeze(1).to(device=device, dtype=torch.int)
+        trueLabels = mutatedBatch[1].to(device=device, dtype=torch.int)
+        if len(trueLabels.shape) > 1:
+            trueLabels = trueLabels.squeeze(1)
+            if len(trueLabels.shape) > 1:
+                logging.error(f"Invalid shape for labels, expect single class output: {trueLabels.shape}")
         sampleIndices: Optional[Tensor] = None
         supportedIndices: Tensor
         # if we have indices, ensure they match then pass them along
