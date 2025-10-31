@@ -10,8 +10,10 @@ model=$2
 mask=$3
 cuda=$4
 calibration=""
+zero_var="--zero_variance"
 if [ $# -ge 5 ]; then
   calibration="--calibration_map ./results/calibration/celeba/$feature/$5.csv" # CSV file for dictionary thing
+  zero_var=""
 fi
 shift $#
 
@@ -31,6 +33,6 @@ python mvce_dataset.py celeba --output ./results/mvce-25/$feature/$mask/ \
     --cuda_index $cuda --mask $mask $calibration \
     --cache_directory "../../datasets/CelebAMask/cache/256/${mask}_test" \
     --generator_samples 3 30 \
-    --beta_variance_scales 0.5 --probability_scales 10 --imputators "./models/mean/celeba.pklz" --batch_mean_imputation 1 \
+    $zero_var --beta_variance_scales 0.5 --probability_scales 10 --imputators "./models/mean/celeba.pklz" --batch_mean_imputation 1 \
     --action_spaces zero-one \
     --threads 4 --trials 4
