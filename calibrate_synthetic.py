@@ -17,7 +17,7 @@ from mvu.explanation.moments import MethodOfMomentsDecisionMaker
 from mvu.logger import setupLogging
 from mvu.model.distribution import GaussianParameters, ConditionalGaussianDistribution
 from mvu.model.generator import BatchGenerator, SingleSampleImputator
-from mvu.model.imputator import ZeroImputator
+from mvu.model.imputator import ZeroImputator, Imputator
 from mvu.model.method import MonteCarloBatchMethod, BasicCombinationMethod, ScaleMaxBetaVarianceMethod, Method
 from mvu.model.regressor import NaiveLinearRegressor
 from mvu.threading_utils import distributeTasks
@@ -44,9 +44,9 @@ if __name__ == '__main__':
                         help="If true, includes baselines for basic types of imputation.")
     parser.add_argument("--zero_imputation", action='store_true',
                         help="If true, includes baselines for basic types of imputation.")
-    parser.add_argument("--singleSample_imputation", action='store_true',
+    parser.add_argument("--single_sample_imputation", action='store_true',
                         help="If true, includes baselines for basic types of imputation.")
-    parser.add_argument("--groundTruthGenerator_imputation", action='store_true',
+    parser.add_argument("--mean_imputation", action='store_true',
                         help="If true, includes baselines for basic types of imputation.")
 
     parser.add_argument("--beta_variance_scales", type=float, nargs='*', default=[],
@@ -149,22 +149,24 @@ if __name__ == '__main__':
         for samples in args.generator_samples
         for generator in generators
     ]
-    if args.zero_imputation or args.singleSample_imputation or args.groundTruthGenerator_imputation or len(args.beta_variance_scales) > 0:
-        logging.info("Including baseline imputators with zero imputation, single sample imputation, and "
-                     "conditional gaussian. Running all imputators with zero variance.")
-        for scale in args.beta_variance_scales:
-            logging.info(f"Running all baseline imputators with {scale} scaled beta max variance.")
-        imputators = []
+    if len(args.beta_variance_scales) > 0:
+        imputators: List[Imputator] = []
         if args.zero_imputation:
+            logging.info("Including baseline imputators with zero imputation.")
             imputators.append(ZeroImputator())
-        if args.singleSample_imputation:
+        if args.single_sample_imputation:
+            logging.info("Including baseline imputators with single sample imputation.")
             imputators.append(SingleSampleImputator(groundTruthGenerator))
-        if args.groundTruthGenerator_imputation:
+        if args.mean_imputation:
+            logging.info("Including baseline imputators with mean imputation.")
             imputators.append(groundTruthGenerator)
 
+        # log info about variance methods
+        for scale in args.beta_variance_scales:
+            logging.info(f"Running all baseline imputators with {scale} scaled beta max variance.")
+
+        # for each, do a basic combination method
         for imputator in imputators:
-            if args.zero_imputation or args.singleSample_imputation or args.groundTruthGenerator_imputation:
-                methods.append(BasicCombinationMethod(classifier, imputator))
             for scale in args.beta_variance_scales:
                 methods.append(ScaleMaxBetaVarianceMethod(classifier, imputator, scale))
 
@@ -186,13 +188,13 @@ if __name__ == '__main__':
     # map methods to decision makers
     k = [0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10]
 
-    decisionMakers = [MethodOfMomentsDecisionMaker(method, args.decision_samples, scale=scale_val) for scale_val in k for method in methods] # This is where scale
+    decisionMakers = [MethodOfMomentsDecisionMaker(method, args.decision_samples, scale=scale_val) for scale_val in k for method in methods]
 
     # finally, build experiment list
     experiments: List[CalibrationScaleExperiment] = []
 
-    lossFunctionBatch: List[callable] = []
-    actions: Optional[Tensor] = None
+    lossFunctionBatch: List[callable]
+    actions: Optional[Tensor]
     lossFunctionBatch, actions = createActionSpaceExpectation(args.action_spaces, size=1, device=device)
     # for actionParams in args.action_spaces:
     #     logging.info(f"Considering action space {actionParams['name']}")
@@ -208,8 +210,7 @@ if __name__ == '__main__':
             decisionMaker=decisionMaker,
             lossFunctions=lossFunctionBatch, actions=actions,
             buckets=args.buckets, trials=args.trials,
-            classifier=classifier, device=device,
-            scale=decisionMaker.scale
+            classifier=classifier, device=device
         )
         experiments.append(CalibrationScaleExperiment(loaderClean, "Missing X1", loaderX1Missing, **common))
         experiments.append(CalibrationScaleExperiment(loaderClean, "Missing X2", loaderX2Missing, **common))

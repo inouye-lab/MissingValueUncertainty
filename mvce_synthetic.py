@@ -4,6 +4,7 @@ import logging
 import os
 from typing import List
 
+import pandas as pd
 import torch
 from torch.nn.functional import sigmoid
 from torch.utils.data import DataLoader
@@ -37,6 +38,8 @@ if __name__ == '__main__':
                         help="Index to use for CUDA, set to -1 to force CPU")
     parser.add_argument("--dataset_path", type=str, default="./datasets/synthetic/test.csv",
                         help='Location of the input dataset')
+    parser.add_argument("--calibration_map", type=str, default="",
+                        help='Location of the calibration data')
 
     # baseline options
     parser.add_argument("--zero_variance", action='store_true',
@@ -87,6 +90,14 @@ if __name__ == '__main__':
 
     torch.manual_seed(args.seed)
     # TODO: does using a generator here make sense?
+
+    # determine calibration
+    method_to_scale = {}
+    if args.calibration_map:
+        df_method_scale = pd.read_csv(args.calibration_map)
+        df_method_scale['Scale'] = pd.to_numeric(df_method_scale['Scale'], errors='coerce')
+        method_to_scale = dict(zip(df_method_scale['Method'], df_method_scale['Scale']))
+        logging.info(f"Found calibration map at {args.calibration_map}: {method_to_scale}")
 
     # creating classifier
     classifier = NaiveLinearRegressor([1.0, 1.0], -1.0, activation=sigmoid)
@@ -192,7 +203,7 @@ if __name__ == '__main__':
     loaderX2Missing = DataLoader(dsX2Missing, batch_size=args.batch_size, pin_memory=True)
 
     # map methods to decision makers
-    decisionMakers = [MethodOfMomentsDecisionMaker(method, args.decision_samples) for method in methods]
+    decisionMakers = [MethodOfMomentsDecisionMaker(method, args.decision_samples, scale=method_to_scale[method.name] if method_to_scale else 1) for method in methods]
 
     # finally, build experiment list
     experiments: List[MVCEExperiment] = []
