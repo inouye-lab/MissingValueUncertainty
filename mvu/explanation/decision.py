@@ -240,13 +240,21 @@ class ScaleProbabilityDecisionMaker(DecisionMaker):
 
         # replace nan with the missing value; allows mixing dirichlet and non with the different mask formats
         mean = self.regressor.predict(self.imputator.impute(features, rand=rand, indices=indices))
-        alphas = mean * self.scale
 
-        assert alphas.shape[0] == features.shape[0]
+        # if working with a single class, convert the single probability into a vector so we can scale
+        alphas: Tensor
+        if len(mean.shape) == 1 or mean.shape[1] == 1:
+            alphas = torch.cat((1 - mean, mean), dim=1) * self.scale
+        else:
+            alphas = mean * self.scale
+
+        assert len(alphas.shape) == 2, "Must have exactly two dimensions for the alpha values"
+        assert alphas.shape[0] == features.shape[0], "Must have same number of predictions as inputs"
 
         # TODO: is the following significant enough to make a new class for features -> alpha mapping?
         # No worry of zero variance, so can directly construct the distribution over the full set of alphas
-        distribution = Dirichlet(alphas)
+        # TODO: is there a better way to handle this than a clamp? Perhaps split out the case of mostly 0s to do a constant prediction?
+        distribution = Dirichlet(torch.clamp(alphas, min=1e-35))
 
         # phis has dimension (randomSamples, datasetSamples, featureCount), but we want (datasetSamples, randomSamples, featureCount)
         phis = torch.swapaxes(distribution.sample(self.size), 0, 1)
