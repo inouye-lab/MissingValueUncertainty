@@ -3,7 +3,7 @@
 cuda=$1
 calibration=""
 zero_var="--zero_variance"
-if [ $# -ge 1 ]; then
+if [ $# -ge 2 ]; then
   calibration="--calibration_map ./results/calibration/synthetic/$2.csv" # CSV file for dictionary thing
   zero_var=""
 fi
