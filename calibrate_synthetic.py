@@ -18,7 +18,7 @@ from mvu.logger import setupLogging
 from mvu.model.distribution import GaussianParameters, ConditionalGaussianDistribution
 from mvu.model.generator import BatchGenerator, SingleSampleImputator
 from mvu.model.imputator import ZeroImputator, Imputator
-from mvu.model.method import MonteCarloBatchMethod, BasicCombinationMethod, ScaleMaxBetaVarianceMethod, Method
+from mvu.model.method import MonteCarloBatchMethod, ScaleMaxBetaVarianceMethod, Method
 from mvu.model.regressor import NaiveLinearRegressor
 from mvu.threading_utils import distributeTasks
 from mvu.util import selectDevice, jsonOrName
@@ -48,6 +48,8 @@ if __name__ == '__main__':
                         help="If true, includes baselines for basic types of imputation.")
     parser.add_argument("--mean_imputation", action='store_true',
                         help="If true, includes baselines for basic types of imputation.")
+    parser.add_argument("--skip_ground_truth", action='store_true',
+                        help="If true, skips the ground truth generator.")
 
     parser.add_argument("--beta_variance_scales", type=float, nargs='*', default=[],
                         help="Scales of the beta variance to try for basic imputation.")
@@ -106,9 +108,11 @@ if __name__ == '__main__':
     logging.info(f"Running ground truth generator with mean {gtParams.mean} and covariance {gtParams.covariance}")
 
     # mutated generators
-    generators: List[BatchGenerator] = [
-        groundTruthGenerator
-    ]
+    generators: List[BatchGenerator] = []
+    # allow opting out of the ground truth generator
+    if not args.skip_ground_truth:
+        generators.append(groundTruthGenerator)
+
     # Below are techniques to develop new generators
     # swap variance of X1 and X2
     if args.flip_variance:

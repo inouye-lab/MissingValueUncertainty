@@ -52,6 +52,8 @@ if __name__ == '__main__':
                         help="If true, includes single sample imputation baseline.")
     parser.add_argument("--mean_imputation", action='store_true',
                         help="If true, includes mean imputation baseline.")
+    parser.add_argument("--skip_ground_truth", action='store_true',
+                        help="If true, skips the ground truth generator.")
 
     # generator options
     parser.add_argument("--mean_shifts", type=str, nargs='*', default=[],
@@ -115,9 +117,11 @@ if __name__ == '__main__':
     logging.info(f"Running ground truth generator with mean {gtParams.mean} and covariance {gtParams.covariance}")
 
     # mutated generators
-    generators: List[BatchGenerator] = [
-        groundTruthGenerator
-    ]
+    generators: List[BatchGenerator] = []
+    # allow opting out of the ground truth generator
+    if not args.skip_ground_truth:
+        generators.append(groundTruthGenerator)
+        
     # swap variance of X1 and X2
     if args.flip_variance:
         assert varianceVector[0] != varianceVector[1], "Variance is equivalent flipped"
