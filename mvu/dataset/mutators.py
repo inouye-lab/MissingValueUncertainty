@@ -237,6 +237,16 @@ class BlockRemovingDataset(MaskedDataset, ABC):
          # finally, add in the number of channels
          .reshape(-1, self.imageSize, self.imageSize).repeat_interleave(self.channels, dim=0))
 
+    def imageToBlocks(self, features: Tensor) -> Tensor:
+        """
+        Converts the given tensor of features into a stack of tensors for each block.
+        """
+        # first, split from (c, width, height) into (c, horizSensor, sensorWidth, vertSensors, sensorHeight)
+        # next, group sensor count together as (horizSensor, vertSensors, c, sensorWidth, sensorHeight)
+        # finally, combine horizontal and vertical counts as (sensorCount, c, sensorWidth, sensorHeight)
+        return features.view(self.channels, self.sensorsPerAxis, self.sensorSize, self.sensorsPerAxis, self.sensorSize) \
+            .permute(1, 3, 0, 2, 4).reshape(self.totalBlocks, self.channels, self.sensorSize, self.sensorSize)
+
     @abstractmethod
     @override
     def _getFeaturesToDrop(self, item, features: Tensor) -> Tensor:
@@ -354,13 +364,56 @@ class BlockDropoutDataset(BlockRemovingDataset):
         if cleanChance > 0:
             self.none = torch.zeros((self.channels, self.imageSize, self.imageSize), dtype=torch.bool)
 
+    def _getDropChances(self, item, features: Tensor) -> Tensor:
+        """
+        Gets the chances to drop the given features
+        :param item:     Index of the feature to drop.
+        :param features: Features being masked.
+        :return:        Tensor of indices to set to missing.
+        """
+        return self.dropChances
+
     @override
     def _getFeaturesToDrop(self, item, features: Tensor) -> Tensor:
         if self.cleanChance > 0 and torch.rand((), generator=self.rand) < self.cleanChance:
             return self.none
-        if self.dropChances is None:
+        dropChances = self._getDropChances(item, features)
+        if dropChances is None:
             return self.none
-        return self.blocksToImage(torch.bernoulli(self.dropChances, generator=self.rand).to(torch.bool))
+        return self.blocksToImage(torch.bernoulli(dropChances, generator=self.rand).to(torch.bool))
+
+
+class MNARBlockDropoutDataset(BlockDropoutDataset):
+    dropChance: callable
+    """Function mapping from a hypertensor of block Tensors to the chance to drop that block"""
+    def __init__(self, base: Dataset[T_co], imageSize: int, sensorSize: int, channels: int, dropChance: callable,
+                 *args, **kwargs):
+        assert imageSize % sensorSize == 0, "Sensor size must be a multiple of image size"
+        super().__init__(base, imageSize, sensorSize, channels, *args, dropChance=0, **kwargs)
+        self.dropChance = dropChance
+
+    def _getDropChances(self, item, features: Tensor) -> Tensor:
+        return self.dropChance(self.imageToBlocks(features))
+
+    # Standard drop chance functions
+    _DIMS = (1, 2, 3)
+    """Dimensions other than the block dimension"""
+
+    @staticmethod
+    def makeSigmoid(aggregator: callable, sharpness: float) -> callable:
+        """
+        Creates a drop chance function mapping the aggregated value of the block through a sigmoid
+        :param aggregator: Function such as mean, amin, or amax to aggregate the block into 1 value.
+                           Expects function of the form (Tensor, dim=Tuple[int]) -> Tensor
+        :param sharpness: Sharpness of the sigmoid.
+                          If positive, drops dark values more often. If negative, drops light values more often.
+                          Higher magnitude increases the chance of the type to drop and decreases the chance of the opposite.
+        :return Callable for the `dropChance` parameter of `MNARBlockDropoutDataset`
+        """
+        def dropChance(featureStack: Tensor) -> Tensor:
+            return 1 / (1 + torch.exp(sharpness * aggregator(featureStack, dim=MNARBlockDropoutDataset._DIMS)))
+        return dropChance
+
 
 def createMask(meta: Optional[DatasetMeta], name: str, image_size: int = None, channels: int = None) -> Tensor:
     """
@@ -432,5 +485,23 @@ def randomDropping(dataset: Dataset, meta: DatasetMeta, name: str = "", **kwargs
         return BlockCountRemovingDataset.fromMetadata(dataset, meta, **kwargs)
     elif name == "block-dropout":
         return BlockDropoutDataset.fromMetadata(dataset, meta, **kwargs)
+    elif name == "mnar-block-dropout":
+        # select mean vs max
+        aggregator: callable
+        aggregatorName = kwargs["aggregator"]
+        kwargs.pop("aggregator")
+        if aggregatorName == "mean":
+            aggregator = torch.mean
+        elif aggregatorName == "max":
+            aggregator = torch.amax
+        elif aggregatorName == "min":
+            aggregator = torch.amin
+        else:
+            raise ValueError(f"Unknown aggregator '{aggregatorName}'")
+        # hardcode to sigmoid for now, with passed sharpness
+        dropChance = MNARBlockDropoutDataset.makeSigmoid(aggregator, kwargs["sharpness"])
+        kwargs.pop("sharpness")
+        # pass remaining arguments to the constructor
+        return MNARBlockDropoutDataset.fromMetadata(dataset, meta, dropChance=dropChance, **kwargs)
     else:
         raise ValueError(f"Unknown random dropping method name '{name}'")
