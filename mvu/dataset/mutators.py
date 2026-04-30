@@ -332,15 +332,23 @@ class BlockCountRemovingDataset(BlockRemovingDataset):
 class BlockDropoutDataset(BlockRemovingDataset):
     """Block removing dataset which has a chance to drop each block"""
 
-    dropChances: Tensor
+    dropChances: Optional[Tensor]
+    """Tensor of percent chance to drop each block"""
 
     def __init__(self, base: Dataset[T_co], imageSize: int, sensorSize: int, channels: int, *args,
-                 dropChance: float = 0.5, cleanChance: float = 0,
+                 dropChance: Optional[Union[float, List[float], Tensor]] = 0.5, cleanChance: float = 0,
                  **kwargs):
         super().__init__(base, imageSize, sensorSize, channels, *args, **kwargs)
-        assert 0 < dropChance < 1, "Drop chance must be a percentage between 0 and 1"
+        assert 0 <= dropChance < 1, "Drop chance must be a percentage between 0 and 1"
 
-        self.dropChances = torch.tensor([dropChance] * self.totalBlocks, dtype=torch.float)
+        if torch.is_tensor(dropChance):
+            self.dropChances = dropChance
+        elif isinstance(dropChance, list):
+            self.dropChances = torch.Tensor(dropChance).float()
+        elif dropChance > 0:
+            self.dropChances = torch.tensor([dropChance] * self.totalBlocks, dtype=torch.float)
+        else:
+            self.dropChances = None
         self.cleanChance = cleanChance
 
         if cleanChance > 0:
@@ -349,6 +357,8 @@ class BlockDropoutDataset(BlockRemovingDataset):
     @override
     def _getFeaturesToDrop(self, item, features: Tensor) -> Tensor:
         if self.cleanChance > 0 and torch.rand((), generator=self.rand) < self.cleanChance:
+            return self.none
+        if self.dropChances is None:
             return self.none
         return self.blocksToImage(torch.bernoulli(self.dropChances, generator=self.rand).to(torch.bool))
 
