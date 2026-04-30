@@ -91,7 +91,13 @@ class MaskedDataset(DatasetWrapper[T_co]):
         self.combineChannels = combineChannels
         self.returnOriginal = returnOriginal
 
-    def _getFeaturesToDrop(self, item):
+    def _getFeaturesToDrop(self, item, features: Tensor):
+        """
+        Gets a tensor of indices to set to missing.
+        :param item:     Index of the feature to drop.
+        :param features: Features being masked.
+        :return:        Tensor of indices to set to missing.
+        """
         return self.featuresToDrop
 
     @override
@@ -99,7 +105,7 @@ class MaskedDataset(DatasetWrapper[T_co]):
         data = self.base[item]
         original = data[0]
         features = original.clone()
-        featuresToDrop = self._getFeaturesToDrop(item)
+        featuresToDrop = self._getFeaturesToDrop(item, features)
         features[featuresToDrop] = self.missingValue
         if self.includeMask != IncludeMask.NONE:
             # start with a 1 mask, dropping requested features
@@ -144,7 +150,7 @@ class RandomMaskedDataset(MaskedDataset):
         self.rand = rand
 
     @override
-    def _getFeaturesToDrop(self, item):
+    def _getFeaturesToDrop(self, item, features: Tensor):
         return self.masks[torch.randint(len(self.masks), (1,), generator=self.rand)]
 
 
@@ -233,7 +239,8 @@ class BlockRemovingDataset(MaskedDataset, ABC):
 
     @abstractmethod
     @override
-    def _getFeaturesToDrop(self, item) -> Tensor:
+    def _getFeaturesToDrop(self, item, features: Tensor) -> Tensor:
+        # redefining to force override
         pass
 
 
@@ -258,7 +265,7 @@ class FixedBlockRemovingDataset(BlockRemovingDataset):
         self._dropFeatures = self.blocksToImage(drop)
 
     @override
-    def _getFeaturesToDrop(self, item) -> Tensor:
+    def _getFeaturesToDrop(self, item, features: Tensor) -> Tensor:
         return self._dropFeatures
 
 
@@ -307,7 +314,7 @@ class BlockCountRemovingDataset(BlockRemovingDataset):
         return torch.randint(self.dropMin, self.dropMax + 1, (1,)).item()
 
     @override
-    def _getFeaturesToDrop(self, item) -> Tensor:
+    def _getFeaturesToDrop(self, item, features: Tensor) -> Tensor:
         # find out how many to drop, can skip multinomial if none or all
         numToDrop = self._getBlocksToDrop()
         if numToDrop <= 0:
@@ -340,7 +347,7 @@ class BlockDropoutDataset(BlockRemovingDataset):
             self.none = torch.zeros((self.channels, self.imageSize, self.imageSize), dtype=torch.bool)
 
     @override
-    def _getFeaturesToDrop(self, item) -> Tensor:
+    def _getFeaturesToDrop(self, item, features: Tensor) -> Tensor:
         if self.cleanChance > 0 and torch.rand((), generator=self.rand) < self.cleanChance:
             return self.none
         return self.blocksToImage(torch.bernoulli(self.dropChances, generator=self.rand).to(torch.bool))
