@@ -398,6 +398,8 @@ class MNARBlockDropoutDataset(BlockDropoutDataset):
     # Standard drop chance functions
     _DIMS = (1, 2, 3)
     """Dimensions other than the block dimension"""
+    _UNIT_CHANNELS = torch.tensor([True, False, True], dtype=torch.bool)
+    """Channels that contain units in the starcraft dataset"""
 
     @staticmethod
     def makeSigmoid(aggregator: callable, sharpness: float) -> callable:
@@ -413,6 +415,13 @@ class MNARBlockDropoutDataset(BlockDropoutDataset):
         def dropChance(featureStack: Tensor) -> Tensor:
             return 1 / (1 + torch.exp(sharpness * aggregator(featureStack, dim=MNARBlockDropoutDataset._DIMS)))
         return dropChance
+
+    @staticmethod
+    def starcraftUnits(aggregator: callable) -> callable:
+        """Takes the max of only the first and third channels before applying the aggregator, which map to units in starcraft"""
+        def selectUnits(featureStack: Tensor, dim: Tuple[int] = MNARBlockDropoutDataset._DIMS) -> Tensor:
+            return aggregator(featureStack[:,MNARBlockDropoutDataset._UNIT_CHANNELS,:,:], dim=dim)
+        return selectUnits
 
 
 def createMask(meta: Optional[DatasetMeta], name: str, image_size: int = None, channels: int = None) -> Tensor:
@@ -498,6 +507,12 @@ def randomDropping(dataset: Dataset, meta: DatasetMeta, name: str = "", **kwargs
             aggregator = torch.amin
         else:
             raise ValueError(f"Unknown aggregator '{aggregatorName}'")
+
+        # if requested, use just first and third units
+        if "starcraft" in kwargs:
+            aggregator = MNARBlockDropoutDataset.starcraftUnits(aggregator)
+            kwargs.pop("starcraft")
+
         # hardcode to sigmoid for now, with passed sharpness
         dropChance = MNARBlockDropoutDataset.makeSigmoid(aggregator, kwargs["sharpness"])
         kwargs.pop("sharpness")

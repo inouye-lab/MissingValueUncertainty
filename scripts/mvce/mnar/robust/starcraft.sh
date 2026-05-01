@@ -25,6 +25,6 @@ conda activate ./venv
 python mvce_dataset.py starcraft --output ./results/mnar/mvce/starcraft/robust/ \
     --dataset '{ "path": "../../datasets/starcraft", "image_format": "cifar10", "image_size": 224, "sensor_size": 56 }' \
     --classifier "./models/robust/starcraft-cifar10/starcraft-$model.pklz" \
-    --cuda_index $cuda --drop '{ "name": "mnar-block-dropout", "sharpness": '$sharpness', "aggregator": "'$aggregator'" }' \
+    --cuda_index $cuda --drop '{ "name": "mnar-block-dropout", "sharpness": '$sharpness', "aggregator": "'$aggregator'", "starcraft": true }' \
     $zero_var $calibration --beta_variance_scales 0.5 --probability_scales 10 --zero_imputation \
     --action_spaces zero-one --threads 4 --trials 4

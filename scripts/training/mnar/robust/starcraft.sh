@@ -18,6 +18,6 @@ python learn_dirichlet_network.py starcraft --seed 1337 --output ./models/robust
     --validate_every 10 --training_iterations 1000 --batch_size 250 --patience 5 \
     --cuda_index $cuda \
     --clean_weight 1 --masked_weight 1 --dirichlet_weight 0 \
-    --drop '{ "name": "mnar-block-dropout", "sharpness": '$sharpness', "aggregator": "'$aggregator'" }' \
+    --drop '{ "name": "mnar-block-dropout", "sharpness": '$sharpness', "aggregator": "'$aggregator'", "starcraft": true }' \
     --architecture '{"name": "resnet_dirichlet", "activation": "identity"}' --use_logits \
     '{ "path": "../../datasets/starcraftimage", "image_format": "cifar10", "image_size": 224, "sensor_size": 56 }'
