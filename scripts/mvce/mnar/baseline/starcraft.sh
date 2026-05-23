@@ -21,7 +21,7 @@ shift $#
 source ../../miniconda/bin/activate
 conda activate ./venv
 
-python mvce_dataset.py starcraft --output ./results/mnar/mvce/baseline/starcraft/ \
+python mvce_dataset.py starcraft --output ./results/mnar/mvce/starcraft/baseline/ \
     --dataset '{ "path": "../../datasets/starcraftimage", "image_format": "cifar10", "image_size": 224, "sensor_size": 56 }' \
     --classifier "./models/starcraft-cifar10/starcraft-$model.pklz" \
     --cuda_index $cuda --drop '{ "name": "mnar-block-dropout", "sharpness": '$sharpness', "aggregator": "'$aggregator'", "starcraft": true }' \

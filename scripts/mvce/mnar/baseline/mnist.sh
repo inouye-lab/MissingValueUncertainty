@@ -21,7 +21,7 @@ shift $#
 source ../../miniconda/bin/activate
 conda activate ./venv
 
-python mvce_dataset.py mnist --output ./results/mnar/mvce/baseline/mnist/ \
+python mvce_dataset.py mnist --output ./results/mnar/mvce/mnist/baseline/ \
     --dataset '{ "path": "../../datasets/mnist", "image_size": 224, "sensor_size": 56 }' \
     --classifier "./models/mnist/mnist-$model.pklz" \
     --cuda_index $cuda --drop '{ "name": "mnar-block-dropout", "sharpness": '$sharpness', "aggregator": "'$aggregator'" }' \

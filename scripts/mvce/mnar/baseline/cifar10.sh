@@ -21,7 +21,7 @@ shift $#
 source ../../miniconda/bin/activate
 conda activate ./venv
 
-python mvce_dataset.py cifar10 --output ./results/mnar/mvce/baseline/cifar10/ \
+python mvce_dataset.py cifar10 --output ./results/mnar/mvce/cifar10/baseline/ \
     --dataset '{ "path": "../../datasets/cifar10", "image_size": 224, "sensor_size": 56 }' \
     --classifier "./models/cifar10/cifar10-$model.pklz" \
     --cuda_index $cuda --drop '{ "name": "mnar-block-dropout", "sharpness": '$sharpness', "aggregator": "'$aggregator'" }' \
