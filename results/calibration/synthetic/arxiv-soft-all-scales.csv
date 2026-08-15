@@ -1,0 +1,82 @@
+Method,Scale,Soft MVCE Mean
+Beta Mean * 0.5 - Conditional Gaussian - Ground Truth,0.1,0.14835324510931966
+Beta Mean * 0.5 - Conditional Gaussian - Ground Truth,0.25,0.14622073620557785
+Beta Mean * 0.5 - Conditional Gaussian - Ground Truth,0.5,0.14087330549955365
+Beta Mean * 0.5 - Conditional Gaussian - Ground Truth,0.75,0.1343337036669254
+Beta Mean * 0.5 - Conditional Gaussian - Ground Truth,1.0,0.12744583934545514
+Beta Mean * 0.5 - Conditional Gaussian - Ground Truth,2.5,0.09092157520353784
+Beta Mean * 0.5 - Conditional Gaussian - Ground Truth,5.0,0.0526670943945646
+Beta Mean * 0.5 - Conditional Gaussian - Ground Truth,7.5,0.0329786085058003
+Beta Mean * 0.5 - Conditional Gaussian - Ground Truth,10.0,0.03000112064182755
+Beta Mean * 0.5 - Single Sample Conditional Gaussian - Ground Truth Imputation,0.1,0.10205193795263764
+Beta Mean * 0.5 - Single Sample Conditional Gaussian - Ground Truth Imputation,0.25,0.0993101801723241
+Beta Mean * 0.5 - Single Sample Conditional Gaussian - Ground Truth Imputation,0.5,0.0943484045565128
+Beta Mean * 0.5 - Single Sample Conditional Gaussian - Ground Truth Imputation,0.75,0.0876207388937473
+Beta Mean * 0.5 - Single Sample Conditional Gaussian - Ground Truth Imputation,1.0,0.08090742677450175
+Beta Mean * 0.5 - Single Sample Conditional Gaussian - Ground Truth Imputation,2.5,0.049015482421964345
+Beta Mean * 0.5 - Single Sample Conditional Gaussian - Ground Truth Imputation,5.0,0.04299844242632385
+Beta Mean * 0.5 - Single Sample Conditional Gaussian - Ground Truth Imputation,7.5,0.0435783732682466
+Beta Mean * 0.5 - Single Sample Conditional Gaussian - Ground Truth Imputation,10.0,0.043614984955638605
+Beta Mean * 0.99 - Conditional Gaussian - Ground Truth,0.1,0.10042168200016019
+Beta Mean * 0.99 - Conditional Gaussian - Ground Truth,0.25,0.13791966065764424
+Beta Mean * 0.99 - Conditional Gaussian - Ground Truth,0.5,0.1479430347681045
+Beta Mean * 0.99 - Conditional Gaussian - Ground Truth,0.75,0.14865971356630325
+Beta Mean * 0.99 - Conditional Gaussian - Ground Truth,1.0,0.14876918494701385
+Beta Mean * 0.99 - Conditional Gaussian - Ground Truth,2.5,0.1486917473375797
+Beta Mean * 0.99 - Conditional Gaussian - Ground Truth,5.0,0.14861655607819554
+Beta Mean * 0.99 - Conditional Gaussian - Ground Truth,7.5,0.148428663611412
+Beta Mean * 0.99 - Conditional Gaussian - Ground Truth,10.0,0.1483041383326053
+Beta Mean * 0.99 - Single Sample Conditional Gaussian - Ground Truth Imputation,0.1,0.08455279283225531
+Beta Mean * 0.99 - Single Sample Conditional Gaussian - Ground Truth Imputation,0.25,0.09848508611321445
+Beta Mean * 0.99 - Single Sample Conditional Gaussian - Ground Truth Imputation,0.5,0.10245128907263276
+Beta Mean * 0.99 - Single Sample Conditional Gaussian - Ground Truth Imputation,0.75,0.10225577652454375
+Beta Mean * 0.99 - Single Sample Conditional Gaussian - Ground Truth Imputation,1.0,0.10127302072942249
+Beta Mean * 0.99 - Single Sample Conditional Gaussian - Ground Truth Imputation,2.5,0.10295712947845455
+Beta Mean * 0.99 - Single Sample Conditional Gaussian - Ground Truth Imputation,5.0,0.10314855724573135
+Beta Mean * 0.99 - Single Sample Conditional Gaussian - Ground Truth Imputation,7.5,0.10154755413532256
+Beta Mean * 0.99 - Single Sample Conditional Gaussian - Ground Truth Imputation,10.0,0.1008863933384418
+Monte Carlo - Conditional Gaussian - 0.25 * Covariance - 100 samples,0.1,0.034055333584547
+Monte Carlo - Conditional Gaussian - 0.25 * Covariance - 100 samples,0.25,0.007778540137223849
+Monte Carlo - Conditional Gaussian - 0.25 * Covariance - 100 samples,0.5,0.02932188194245095
+Monte Carlo - Conditional Gaussian - 0.25 * Covariance - 100 samples,0.75,0.0407071318477392
+Monte Carlo - Conditional Gaussian - 0.25 * Covariance - 100 samples,1.0,0.04776368383318185
+Monte Carlo - Conditional Gaussian - 0.25 * Covariance - 100 samples,2.5,0.06556565128266806
+Monte Carlo - Conditional Gaussian - 0.25 * Covariance - 100 samples,5.0,0.07464114576578135
+Monte Carlo - Conditional Gaussian - 0.25 * Covariance - 100 samples,7.5,0.0787194482982158
+Monte Carlo - Conditional Gaussian - 0.25 * Covariance - 100 samples,10.0,0.0812930129468441
+Monte Carlo - Conditional Gaussian - 0.6 Correlation - 100 samples,0.1,0.11821149662137026
+Monte Carlo - Conditional Gaussian - 0.6 Correlation - 100 samples,0.25,0.07784109190106385
+Monte Carlo - Conditional Gaussian - 0.6 Correlation - 100 samples,0.5,0.0436120200902223
+Monte Carlo - Conditional Gaussian - 0.6 Correlation - 100 samples,0.75,0.0242788521572947
+Monte Carlo - Conditional Gaussian - 0.6 Correlation - 100 samples,1.0,0.0115441847592592
+Monte Carlo - Conditional Gaussian - 0.6 Correlation - 100 samples,2.5,0.0251309564337134
+Monte Carlo - Conditional Gaussian - 0.6 Correlation - 100 samples,5.0,0.04535214044153685
+Monte Carlo - Conditional Gaussian - 0.6 Correlation - 100 samples,7.5,0.0547016002237796
+Monte Carlo - Conditional Gaussian - 0.6 Correlation - 100 samples,10.0,0.06011231988668435
+Monte Carlo - Conditional Gaussian - 0.8 Correlation - 100 samples,0.1,0.08086235821247095
+Monte Carlo - Conditional Gaussian - 0.8 Correlation - 100 samples,0.25,0.039067106321454007
+Monte Carlo - Conditional Gaussian - 0.8 Correlation - 100 samples,0.5,0.00905846222303805
+Monte Carlo - Conditional Gaussian - 0.8 Correlation - 100 samples,0.75,0.0094869912136346
+Monte Carlo - Conditional Gaussian - 0.8 Correlation - 100 samples,1.0,0.01937797712162135
+Monte Carlo - Conditional Gaussian - 0.8 Correlation - 100 samples,2.5,0.045462395995855304
+Monte Carlo - Conditional Gaussian - 0.8 Correlation - 100 samples,5.0,0.0603984054177999
+Monte Carlo - Conditional Gaussian - 0.8 Correlation - 100 samples,7.5,0.0670393127948045
+Monte Carlo - Conditional Gaussian - 0.8 Correlation - 100 samples,10.0,0.07091828808188436
+Monte Carlo - Conditional Gaussian - 4.0 * Covariance - 100 samples,0.1,0.16362394392490381
+Monte Carlo - Conditional Gaussian - 4.0 * Covariance - 100 samples,0.25,0.1401877924799919
+Monte Carlo - Conditional Gaussian - 4.0 * Covariance - 100 samples,0.5,0.11264671385288234
+Monte Carlo - Conditional Gaussian - 4.0 * Covariance - 100 samples,0.75,0.09318323433399195
+Monte Carlo - Conditional Gaussian - 4.0 * Covariance - 100 samples,1.0,0.0776677578687667
+Monte Carlo - Conditional Gaussian - 4.0 * Covariance - 100 samples,2.5,0.03028422314673655
+Monte Carlo - Conditional Gaussian - 4.0 * Covariance - 100 samples,5.0,0.00466215820051725
+Monte Carlo - Conditional Gaussian - 4.0 * Covariance - 100 samples,7.5,0.0185855072923004
+Monte Carlo - Conditional Gaussian - 4.0 * Covariance - 100 samples,10.0,0.02812606189399955
+Monte Carlo - Conditional Gaussian - Ground Truth - 100 samples,0.1,0.10292681306600565
+Monte Carlo - Conditional Gaussian - Ground Truth - 100 samples,0.25,0.0614058412611484
+Monte Carlo - Conditional Gaussian - Ground Truth - 100 samples,0.5,0.0286853769794106
+Monte Carlo - Conditional Gaussian - Ground Truth - 100 samples,0.75,0.01147372275590895
+Monte Carlo - Conditional Gaussian - Ground Truth - 100 samples,1.0,0.00538832496386015
+Monte Carlo - Conditional Gaussian - Ground Truth - 100 samples,2.5,0.033900848589837496
+Monte Carlo - Conditional Gaussian - Ground Truth - 100 samples,5.0,0.05162995308637615
+Monte Carlo - Conditional Gaussian - Ground Truth - 100 samples,7.5,0.05947113968431945
+Monte Carlo - Conditional Gaussian - Ground Truth - 100 samples,10.0,0.06482036039233205

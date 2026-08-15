@@ -1,0 +1,8 @@
+Method,Scale,Soft MVCE Mean
+Beta Mean * 0.5 - 1 Sample Mean Caching Generator Imputation,0.1,0.027682987041771398
+Beta Mean * 0.5 - Mean Imputation,0.1,0.05848452076315876
+Dirichlet Network,7.5,0.00903576519340275
+Monte Carlo - Caching Generator - 3 samples,0.25,0.01431560562923545
+Monte Carlo - Caching Generator - 30 samples,0.5,0.006019378313794699
+Scaled probability - 1 Sample Mean Caching Generator Imputation,1.0,0.03018548898398875
+Scaled probability - Mean Imputation,1.0,0.06208138540387145

@@ -1,0 +1,64 @@
+Method,Scale,Soft MVCE Mean
+Beta Mean * 0.5 - 1 Sample Mean Caching Generator Imputation,0.1,0.08323357021436091
+Beta Mean * 0.5 - 1 Sample Mean Caching Generator Imputation,0.25,0.08289880072697994
+Beta Mean * 0.5 - 1 Sample Mean Caching Generator Imputation,0.5,0.0837795659899711
+Beta Mean * 0.5 - 1 Sample Mean Caching Generator Imputation,0.75,0.08422482805326575
+Beta Mean * 0.5 - 1 Sample Mean Caching Generator Imputation,1.0,0.08562532160431141
+Beta Mean * 0.5 - 1 Sample Mean Caching Generator Imputation,2.5,0.0929715503007173
+Beta Mean * 0.5 - 1 Sample Mean Caching Generator Imputation,5.0,0.09987344406545155
+Beta Mean * 0.5 - 1 Sample Mean Caching Generator Imputation,7.5,0.10288893058896059
+Beta Mean * 0.5 - 1 Sample Mean Caching Generator Imputation,10.0,0.1050115097314119
+Beta Mean * 0.5 - Mean Imputation,0.1,0.22665937757119534
+Beta Mean * 0.5 - Mean Imputation,0.25,0.22708848584443325
+Beta Mean * 0.5 - Mean Imputation,0.5,0.2285799607634544
+Beta Mean * 0.5 - Mean Imputation,0.75,0.22945981705561275
+Beta Mean * 0.5 - Mean Imputation,1.0,0.2308871415443718
+Beta Mean * 0.5 - Mean Imputation,2.5,0.2386068608611822
+Beta Mean * 0.5 - Mean Imputation,5.0,0.24534204695373768
+Beta Mean * 0.5 - Mean Imputation,7.5,0.24829852860420942
+Beta Mean * 0.5 - Mean Imputation,10.0,0.25008062366396183
+Dirichlet Network,0.1,0.09094045683741564
+Dirichlet Network,0.25,0.068926952779293
+Dirichlet Network,0.5,0.07082879915833465
+Dirichlet Network,0.75,0.0689368676394224
+Dirichlet Network,1.0,0.06876577809453005
+Dirichlet Network,2.5,0.06695837713778015
+Dirichlet Network,5.0,0.06870431080460546
+Dirichlet Network,7.5,0.0707953171804547
+Dirichlet Network,10.0,0.07353618787601585
+Monte Carlo - Caching Generator - 3 samples,0.1,0.04569649323821065
+Monte Carlo - Caching Generator - 3 samples,0.25,0.03623243188485495
+Monte Carlo - Caching Generator - 3 samples,0.5,0.0364596215076744
+Monte Carlo - Caching Generator - 3 samples,0.75,0.0368864964693784
+Monte Carlo - Caching Generator - 3 samples,1.0,0.0388256004080176
+Monte Carlo - Caching Generator - 3 samples,2.5,0.04271193407475945
+Monte Carlo - Caching Generator - 3 samples,5.0,0.047611177898943355
+Monte Carlo - Caching Generator - 3 samples,7.5,0.0514054084196686
+Monte Carlo - Caching Generator - 3 samples,10.0,0.05593299027532335
+Monte Carlo - Caching Generator - 30 samples,0.1,0.02067125681787725
+Monte Carlo - Caching Generator - 30 samples,0.25,0.0127595718950033
+Monte Carlo - Caching Generator - 30 samples,0.5,0.0098255909979343
+Monte Carlo - Caching Generator - 30 samples,0.75,0.00772681739181275
+Monte Carlo - Caching Generator - 30 samples,1.0,0.0095910725649446
+Monte Carlo - Caching Generator - 30 samples,2.5,0.01311658881604665
+Monte Carlo - Caching Generator - 30 samples,5.0,0.01824204903095955
+Monte Carlo - Caching Generator - 30 samples,7.5,0.02306049503386015
+Monte Carlo - Caching Generator - 30 samples,10.0,0.02794904354959725
+Scaled probability - 1 Sample Mean Caching Generator Imputation,1.0,0.1155000030994415
+Scaled probability - 1 Sample Mean Caching Generator Imputation,2.5,0.1155000030994415
+Scaled probability - 1 Sample Mean Caching Generator Imputation,5.0,0.1155000030994415
+Scaled probability - 1 Sample Mean Caching Generator Imputation,7.5,0.1155000030994415
+Scaled probability - 1 Sample Mean Caching Generator Imputation,10.0,0.1155000030994415
+Scaled probability - 1 Sample Mean Caching Generator Imputation,25.0,0.1155000030994415
+Scaled probability - 1 Sample Mean Caching Generator Imputation,50.0,0.1155000030994415
+Scaled probability - 1 Sample Mean Caching Generator Imputation,75.0,0.1155000030994415
+Scaled probability - 1 Sample Mean Caching Generator Imputation,100.0,0.1155000030994415
+Scaled probability - Mean Imputation,1.0,0.26050001382827753
+Scaled probability - Mean Imputation,2.5,0.26050001382827753
+Scaled probability - Mean Imputation,5.0,0.26050001382827753
+Scaled probability - Mean Imputation,7.5,0.26050001382827753
+Scaled probability - Mean Imputation,10.0,0.26050001382827753
+Scaled probability - Mean Imputation,25.0,0.26050001382827753
+Scaled probability - Mean Imputation,50.0,0.26050001382827753
+Scaled probability - Mean Imputation,75.0,0.26050001382827753
+Scaled probability - Mean Imputation,100.0,0.26050001382827753

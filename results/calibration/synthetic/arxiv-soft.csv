@@ -1,0 +1,10 @@
+Method,Scale,Soft MVCE Mean
+Beta Mean * 0.5 - Conditional Gaussian - Ground Truth,10.0,0.03000112064182755
+Beta Mean * 0.5 - Single Sample Conditional Gaussian - Ground Truth Imputation,5.0,0.04299844242632385
+Beta Mean * 0.99 - Conditional Gaussian - Ground Truth,0.1,0.10042168200016019
+Beta Mean * 0.99 - Single Sample Conditional Gaussian - Ground Truth Imputation,0.1,0.08455279283225531
+Monte Carlo - Conditional Gaussian - 0.25 * Covariance - 100 samples,0.25,0.007778540137223849
+Monte Carlo - Conditional Gaussian - 0.6 Correlation - 100 samples,1.0,0.0115441847592592
+Monte Carlo - Conditional Gaussian - 0.8 Correlation - 100 samples,0.5,0.00905846222303805
+Monte Carlo - Conditional Gaussian - 4.0 * Covariance - 100 samples,5.0,0.00466215820051725
+Monte Carlo - Conditional Gaussian - Ground Truth - 100 samples,1.0,0.00538832496386015

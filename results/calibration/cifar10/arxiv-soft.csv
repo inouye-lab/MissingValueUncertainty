@@ -1,0 +1,4 @@
+Method,Scale,Soft MVCE Mean
+Beta Mean * 0.5 - Mean Imputation,0.1,0.2868261039257049
+Dirichlet Network,1.0,0.0460098162293434
+Scaled probability - Mean Imputation,1.0,0.3110095262527466

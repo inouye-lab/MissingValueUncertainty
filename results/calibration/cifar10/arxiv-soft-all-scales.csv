@@ -1,0 +1,28 @@
+Method,Scale,Soft MVCE Mean
+Beta Mean * 0.5 - Mean Imputation,0.1,0.2868261039257049
+Beta Mean * 0.5 - Mean Imputation,0.25,0.2902382016181946
+Beta Mean * 0.5 - Mean Imputation,0.5,0.2955987155437469
+Beta Mean * 0.5 - Mean Imputation,0.75,0.3037607073783874
+Beta Mean * 0.5 - Mean Imputation,1.0,0.3102557361125946
+Beta Mean * 0.5 - Mean Imputation,2.5,0.3607352375984192
+Beta Mean * 0.5 - Mean Imputation,5.0,0.4200317859649658
+Beta Mean * 0.5 - Mean Imputation,7.5,0.4530049860477447
+Beta Mean * 0.5 - Mean Imputation,10.0,0.4782491326332092
+Dirichlet Network,0.1,0.133877694606781
+Dirichlet Network,0.25,0.1048342138528823
+Dirichlet Network,0.5,0.0684808567166328
+Dirichlet Network,0.75,0.0513758659362793
+Dirichlet Network,1.0,0.0460098162293434
+Dirichlet Network,2.5,0.0528624355792999
+Dirichlet Network,5.0,0.0798119455575943
+Dirichlet Network,7.5,0.0942723304033279
+Dirichlet Network,10.0,0.1026266366243362
+Scaled probability - Mean Imputation,1.0,0.3110095262527466
+Scaled probability - Mean Imputation,2.5,0.3594714701175689
+Scaled probability - Mean Imputation,5.0,0.4199572205543518
+Scaled probability - Mean Imputation,7.5,0.4533800184726715
+Scaled probability - Mean Imputation,10.0,0.4778359830379486
+Scaled probability - Mean Imputation,25.0,0.5399797558784485
+Scaled probability - Mean Imputation,50.0,0.5696907043457031
+Scaled probability - Mean Imputation,75.0,0.5824438333511353
+Scaled probability - Mean Imputation,100.0,0.590903639793396
