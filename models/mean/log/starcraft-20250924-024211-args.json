@@ -1,0 +1,1 @@
+{"name": "starcraft", "dataset": {"path": "../../datasets/starcraftimage", "image_format": "cifar10", "image_size": 224}, "batch_size": 50, "split": "train", "output": "./models/mean/", "verbose": 1, "cuda_index": 1}

@@ -1,0 +1,1 @@
+{"name": "celeba", "dataset": {"path": "../../datasets/CelebAMask/256/img", "lists_root": "datasets/celeba", "attributes_path": "../../datasets/CelebAMask/1024/CelebAMask-HQ-attribute-anno.txt"}, "batch_size": 250, "split": "train", "output": "./models/mean/", "verbose": 1, "cuda_index": 1}

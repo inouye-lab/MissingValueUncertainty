@@ -1,0 +1,1 @@
+{"name": "mnist", "dataset": {"path": "../../datasets/mnist", "image_size": 224}, "batch_size": 50, "split": "train", "output": "./models/mean/", "verbose": 1, "cuda_index": 1}
